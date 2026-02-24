@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Share for Ellen ❤️</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&family=Poppins:wght@300;400;600&display=swap"
+        rel="stylesheet">
+
+    <!-- Cloudinary Upload Widget -->
+    <script src="https://upload-widget.cloudinary.com/global/all.js" type="text/javascript"></script>
+
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%);
+            min-height: 100vh;
+        }
+
+        .romantic-font {
+            font-family: 'Dancing Script', cursive;
+        }
+
+        .upload-zone {
+            border: 3px dashed #f472b6;
+            transition: all 0.3s ease;
+        }
+
+        .upload-zone:hover {
+            border-color: #ec4899;
+            background: rgba(236, 72, 153, 0.1);
+            transform: scale(1.02);
+        }
+
+        .photo-card {
+            transition: transform 0.3s ease;
+        }
+
+        .photo-card:hover {
+            transform: scale(1.05);
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease forwards;
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .float {
+            animation: float 3s ease-in-out infinite;
+        }
+    </style>
+</head>
+
+<body class="p-4 md:p-6">
+    <!-- Return to Homepage -->
+    <div class="fixed top-4 left-4 z-50">
+        <a href="index.html" 
+            class="bg-rose-500 text-white px-4 py-2 rounded-full text-sm hover:bg-rose-600 transition shadow-lg">
+            ← Homepage
+        </a>
+    </div>
+
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <div class="text-6xl mb-4 float">🎂</div>
+            <h1 class="text-4xl md:text-5xl romantic-font text-rose-500 mb-4">Share for Ellen!</h1>
+            <p class="text-gray-600 text-lg">Upload a photo and add a sweet message 💕</p>
+        </div>
+
+        <!-- Two Column Layout -->
+        <div class="grid md:grid-cols-2 gap-6">
+            <!-- Left Side: Upload Photo -->
+            <div class="bg-white rounded-3xl shadow-xl p-6 md:p-8">
+                <h2 class="text-2xl font-bold text-gray-700 mb-6 text-center">📸 Upload Your Photo</h2>
+
+                <div class="upload-zone rounded-2xl p-8 text-center cursor-pointer" onclick="openUploadWidget()">
+                    <div class="text-6xl mb-4">📤</div>
+                    <p class="text-xl text-gray-600 font-semibold">Tap to Upload Photo</p>
+                    <p class="text-gray-400 text-sm mt-2">Max 5MB • JPG, PNG, GIF</p>
+                </div>
+
+                <!-- Upload Progress -->
+                <div id="uploadProgress" class="hidden mt-6">
+                    <div class="flex items-center justify-center space-x-3">
+                        <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-rose-500"></div>
+                        <span class="text-gray-600">Uploading...</span>
+                    </div>
+                </div>
+
+                <!-- Uploaded Photos -->
+                <div class="mt-6">
+                    <h3 class="font-bold text-gray-700 mb-3">Your Uploads 📷</h3>
+                    <div id="photoGrid" class="grid grid-cols-2 gap-3">
+                        <!-- Photos appear here -->
+                    </div>
+                    <div id="emptyState" class="text-center py-6 text-gray-400">
+                        <p>No photos yet</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Side: Add Message -->
+            <div class="bg-white rounded-3xl shadow-xl p-6 md:p-8">
+                <h2 class="text-2xl font-bold text-gray-700 mb-6 text-center">💌 Add Your Message</h2>
+
+                <form onsubmit="submitMessage(event)">
+                    <div class="mb-4">
+                        <label class="block text-gray-600 mb-2 font-semibold">Your Name (optional)</label>
+                        <input type="text" id="senderName"
+                            class="w-full p-3 border-2 border-rose-200 rounded-xl focus:outline-none focus:border-rose-400"
+                            placeholder="Enter your name">
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-gray-600 mb-2 font-semibold">Your Photo *</label>
+                        <select id="selectedPhoto" required
+                            class="w-full p-3 border-2 border-rose-200 rounded-xl focus:outline-none focus:border-rose-400">
+                            <option value="">Select a photo you uploaded</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-gray-600 mb-2 font-semibold">Sweet Message for Ellen *</label>
+                        <textarea id="messageText" required
+                            class="w-full p-3 border-2 border-rose-200 rounded-xl focus:outline-none focus:border-rose-400"
+                            rows="4" placeholder="Write something sweet..."></textarea>
+                    </div>
+
+                    <button type="submit"
+                        class="w-full bg-gradient-to-r from-rose-500 to-pink-500 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition">
+                        💕 Add to Slideshow
+                    </button>
+                </form>
+
+                <!-- Messages List -->
+                <div class="mt-6">
+                    <h3 class="font-bold text-gray-700 mb-3">Messages Added 💌</h3>
+                    <div id="messagesList" class="space-y-3 max-h-60 overflow-y-auto">
+                        <!-- Messages appear here -->
+                    </div>
+                    <div id="noMessages" class="text-center py-6 text-gray-400">
+                        <p>No messages yet</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slideshow Preview -->
+        <div class="mt-8">
+            <h2 class="text-2xl font-bold text-gray-700 mb-4 text-center">🎬 Slideshow Preview</h2>
+            <div id="slideshowPreview" class="bg-black rounded-2xl overflow-hidden relative" style="height: 300px;">
+                <div id="slideshowContent" class="absolute inset-0 flex items-center justify-center">
+                    <p class="text-white text-center p-4">No messages yet. Add your message above! 💌</p>
+                </div>
+            </div>
+            <p class="text-center text-gray-500 mt-2 text-sm">This is what Ellen will see on her birthday page</p>
+        </div>
+
+        <!-- Footer -->
+        <div class="text-center mt-8 text-gray-500">
+            <p>Made with ❤️ for Ellen's special day</p>
+        </div>
+    </div>
+
+    <script>
+        // Store uploaded photos in localStorage
+        let uploadedPhotos = JSON.parse(localStorage.getItem('ellenPhotos') || '[]');
+
+        // Store messages with photos
+        let messagesData = JSON.parse(localStorage.getItem('ellenMessages') || '[]');
+
+        // Cloudinary configuration
+        const cloudName = 'djjgkezui';
+        const uploadPreset = 'ml_default';
+
+        // Initialize
+        displayPhotos();
+        displayMessages();
+        updatePhotoSelect();
+        updateSlideshowPreview();
+
+        function openUploadWidget() {
+            document.getElementById('uploadProgress').classList.remove('hidden');
+
+            const widget = cloudinary.createUploadWidget({
+                cloudName: cloudName,
+                uploadPreset: uploadPreset,
+                sources: ['local', 'camera'],
+                maxFileSize: 5000000,
+                clientAllowedFormats: ['jpg', 'jpeg', 'png', 'gif'],
+                styles: {
+                    palette: {
+                        window: "#FFFFFF",
+                        windowBorder: "#F472B6",
+                        tabIcon: "#EC4899",
+                        menuIcons: "#F472B6",
+                        textDark: "#333333",
+                        textLight: "#FFFFFF",
+                        link: "#EC4899",
+                        action: "#EC4899",
+                        inactiveTabIcon: "#9CA3AF",
+                        error: "#EF4444",
+                        inProgress: "#EC4899",
+                        complete: "#10B981",
+                        sourceBg: "#F3F4F6"
+                    }
+                }
+            }, (error, result) => {
+                document.getElementById('uploadProgress').classList.add('hidden');
+
+                if (!error && result && result.event === "success") {
+                    addPhoto(result.info.secure_url);
+                }
+            });
+
+            widget.open();
+        }
+
+        function addPhoto(url) {
+            uploadedPhotos.push(url);
+            localStorage.setItem('ellenPhotos', JSON.stringify(uploadedPhotos));
+            displayPhotos();
+            updatePhotoSelect();
+            showNotification('Photo uploaded! 📸');
+        }
+
+        function displayPhotos() {
+            const grid = document.getElementById('photoGrid');
+            const empty = document.getElementById('emptyState');
+
+            if (uploadedPhotos.length === 0) {
+                empty.classList.remove('hidden');
+                grid.innerHTML = '';
+                return;
+            }
+
+            empty.classList.add('hidden');
+            grid.innerHTML = uploadedPhotos.map((url, index) => `
+                <div class="photo-card relative fade-in">
+                    <img src="${url}" alt="Photo ${index + 1}" 
+                        class="w-full h-24 object-cover rounded-xl shadow-md">
+                    <button onclick="removePhoto(${index})" 
+                        class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600">
+                        ×
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function removePhoto(index) {
+            if (confirm('Remove this photo?')) {
+                uploadedPhotos.splice(index, 1);
+                localStorage.setItem('ellenPhotos', JSON.stringify(uploadedPhotos));
+                displayPhotos();
+                updatePhotoSelect();
+            }
+        }
+
+        function updatePhotoSelect() {
+            const select = document.getElementById('selectedPhoto');
+            select.innerHTML = '<option value="">Select a photo you uploaded</option>';
+
+            uploadedPhotos.forEach((url, index) => {
+                select.innerHTML += `<option value="${url}">Photo ${index + 1}</option>`;
+            });
+        }
+
+        function submitMessage(e) {
+            e.preventDefault();
+
+            const name = document.getElementById('senderName').value || 'Anonymous';
+            const photo = document.getElementById('selectedPhoto').value;
+            const message = document.getElementById('messageText').value;
+
+            if (!photo) {
+                alert('Please select a photo!');
+                return;
+            }
+
+            const newMessage = {
+                name,
+                photo,
+                message,
+                date: new Date().toISOString()
+            };
+
+            messagesData.push(newMessage);
+            localStorage.setItem('ellenMessages', JSON.stringify(messagesData));
+
+            displayMessages();
+
+            // Reset form
+            document.getElementById('senderName').value = '';
+            document.getElementById('messageText').value = '';
+            document.getElementById('selectedPhoto').value = '';
+
+            showNotification('Message added to slideshow! 💌');
+        }
+
+        function displayMessages() {
+            const list = document.getElementById('messagesList');
+            const noMessages = document.getElementById('noMessages');
+
+            if (messagesData.length === 0) {
+                noMessages.classList.remove('hidden');
+                list.innerHTML = '';
+                return;
+            }
+
+            noMessages.classList.add('hidden');
+            list.innerHTML = messagesData.map((msg, index) => `
+                <div class="bg-rose-50 p-3 rounded-xl fade-in">
+                    <div class="flex items-start gap-3">
+                        <img src="${msg.photo}" class="w-16 h-16 object-cover rounded-lg">
+                        <div class="flex-1">
+                            <div class="font-bold text-rose-600">${msg.name}</div>
+                            <div class="text-gray-600 text-sm">${msg.message}</div>
+                            <button onclick="deleteMessage(${index})" class="text-red-400 text-xs mt-1 hover:text-red-600">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            `).reverse().join('');
+
+            // Update slideshow preview
+            updateSlideshowPreview();
+        }
+
+        function updateSlideshowPreview() {
+            const container = document.getElementById('slideshowContent');
+
+            if (messagesData.length === 0) {
+                container.innerHTML = '<p class="text-white text-center p-4">No messages yet. Add your message above! 💌</p>';
+                return;
+            }
+
+            // Show the first message as preview
+            const firstMsg = messagesData[0];
+            container.innerHTML = `
+                <img src="${firstMsg.photo}" class="absolute inset-0 w-full h-full object-cover">
+                <div class="absolute inset-0 bg-black/50 flex items-center justify-center p-8">
+                    <div class="text-center">
+                        <h3 class="text-white text-2xl font-bold romantic-font mb-2">${firstMsg.name}</h3>
+                        <p class="text-white text-lg">${firstMsg.message}</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function deleteMessage(index) {
+            if (confirm('Delete this message?')) {
+                messagesData.splice(index, 1);
+                localStorage.setItem('ellenMessages', JSON.stringify(messagesData));
+                displayMessages();
+            }
+        }
+
+        function showNotification(message) {
+            const notification = document.createElement('div');
+            notification.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-full shadow-lg fade-in z-50';
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+    </script>
+</body>
+
+</html>

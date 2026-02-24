@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ellen - Photo Slideshow ❤️</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <style>
+        :root {
+            --primary: #ec4899;
+            --secondary: #f43f5e;
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
+            --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: #0a0a0a;
+            overflow: hidden;
+            min-height: 100vh;
+        }
+
+        .romantic-font {
+            font-family: 'Playfair Display', serif;
+        }
+
+        /* Background with subtle gradient */
+        .bg-gradient {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(ellipse at top, #1a1a2e 0%, #0a0a0a 50%, #000 100%);
+            z-index: -1;
+        }
+
+        /* Fullscreen Slideshow */
+        .slideshow-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .slide {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .slide.active {
+            opacity: 1;
+        }
+
+        .slide-image {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scale(1.05);
+            transition: transform 8s ease-out;
+        }
+
+        .slide.active .slide-image {
+            transform: scale(1);
+        }
+
+        /* Modern Glass Message Card */
+        .slide-message {
+            position: absolute;
+            bottom: 180px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: linear-gradient(135deg,
+                    rgba(236, 72, 153, 0.85) 0%,
+                    rgba(244, 63, 94, 0.85) 50%,
+                    rgba(236, 72, 153, 0.85) 100%);
+            padding: 28px 40px;
+            border-radius: 24px;
+            text-align: center;
+            max-width: 85%;
+            min-width: 320px;
+            box-shadow:
+                0 20px 60px rgba(236, 72, 153, 0.4),
+                0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            opacity: 0;
+            transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 20;
+        }
+
+        .slide.active .slide-message {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .slide-message::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 20%;
+            right: 20%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+        }
+
+        .slide-message h3 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 12px;
+            letter-spacing: 0.5px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .slide-message p {
+            font-size: 1.1rem;
+            color: rgba(255, 255, 255, 0.95);
+            line-height: 1.6;
+            font-weight: 300;
+        }
+
+        /* Floating Controls Panel */
+        .controls-wrapper {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+        }
+
+        /* Progress bar */
+        .progress-container {
+            width: min(90vw, 500px);
+            height: 3px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), #f472b6, var(--primary));
+            background-size: 200% 100%;
+            width: 0%;
+            border-radius: 10px;
+            transition: width 0.1s linear;
+            animation: shimmer 2s infinite linear;
+        }
+
+        @keyframes shimmer {
+            0% {
+                background-position: 200% 0;
+            }
+
+            100% {
+                background-position: -200% 0;
+            }
+        }
+
+        /* Main Controls */
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 20px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 50px;
+            box-shadow: var(--glass-shadow);
+        }
+
+        .control-btn {
+            background: transparent;
+            border: none;
+            color: white;
+            padding: 10px 16px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 14px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .control-btn.primary {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            padding: 10px 20px;
+        }
+
+        .control-btn.primary:hover {
+            background: linear-gradient(135deg, var(--secondary), var(--primary));
+            box-shadow: 0 4px 20px rgba(236, 72, 153, 0.5);
+        }
+
+        .control-btn svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        /* Divider */
+        .divider {
+            width: 1px;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.2);
+            margin: 0 4px;
+        }
+
+        /* Photo counter */
+        .photo-counter {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        /* Floating Action Buttons (Top Right) */
+        .fab-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 200;
+        }
+
+        .fab {
+            width: 48px;
+            height: 48px;
+            border-radius: 16px;
+            border: 1px solid var(--glass-border);
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: var(--glass-shadow);
+        }
+
+        .fab:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .fab svg {
+            width: 22px;
+            height: 22px;
+        }
+
+        .fab.back {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+        }
+
+        /* Title overlay */
+        .title-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(ellipse at center, rgba(236, 72, 153, 0.3) 0%, rgba(0, 0, 0, 0.9) 100%);
+            z-index: 150;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 1s ease;
+        }
+
+        .title-overlay.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .title-overlay h1 {
+            font-size: clamp(2.5rem, 8vw, 5rem);
+            color: white;
+            text-shadow: 0 4px 30px rgba(236, 72, 153, 0.5);
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .title-overlay p {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 1.25rem;
+            margin-top: 16px;
+            font-weight: 300;
+        }
+
+        /* Floating hearts animation */
+        .hearts {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 149;
+            overflow: hidden;
+        }
+
+        .heart {
+            position: absolute;
+            color: rgba(236, 72, 153, 0.6);
+            font-size: 20px;
+            animation: fall linear forwards;
+        }
+
+        @keyframes fall {
+            0% {
+                transform: translateY(-10vh) rotate(0deg);
+                opacity: 1;
+            }
+
+            100% {
+                transform: translateY(110vh) rotate(360deg);
+                opacity: 0;
+            }
+        }
+
+        /* Download modal */
+        .download-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(10px);
+            z-index: 300;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .download-modal.active {
+            display: flex;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        .download-content {
+            background: linear-gradient(145deg, #1a1a2e, #16162a);
+            border-radius: 24px;
+            padding: 32px;
+            text-align: center;
+            max-width: 90%;
+            max-height: 85%;
+            overflow: auto;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5);
+            animation: scaleIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes scaleIn {
+            from {
+                transform: scale(0.9);
+                opacity: 0;
+            }
+
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .download-content h2 {
+            background: linear-gradient(135deg, var(--primary), #f472b6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 24px;
+            font-size: 1.5rem;
+        }
+
+        .download-preview {
+            max-width: 100%;
+            max-height: 50vh;
+            border-radius: 16px;
+            margin-bottom: 24px;
+        }
+
+        .download-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .download-btn {
+            padding: 14px 28px;
+            border-radius: 16px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .download-btn.primary {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+        }
+
+        .download-btn.primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(236, 72, 153, 0.4);
+        }
+
+        .download-btn.secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .download-btn.secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .close-modal {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .close-modal:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: rotate(90deg);
+        }
+
+        /* Mobile adjustments */
+        @media (max-width: 640px) {
+            .slide-message {
+                bottom: 160px;
+                padding: 20px 24px;
+                min-width: 280px;
+            }
+
+            .slide-message h3 {
+                font-size: 1.25rem;
+            }
+
+            .slide-message p {
+                font-size: 1rem;
+            }
+
+            .controls {
+                padding: 10px 16px;
+                gap: 4px;
+            }
+
+            .control-btn {
+                padding: 8px 12px;
+                font-size: 12px;
+            }
+
+            .control-btn span {
+                display: none;
+            }
+
+            .divider {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Background -->
+    <div class="bg-gradient"></div>
+
+    <!-- Floating Hearts -->
+    <div class="hearts" id="hearts"></div>
+
+    <!-- Back Button -->
+    <button class="fab back" onclick="goBack()" title="Go Back">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+        </svg>
+    </button>
+
+    <!-- FABs -->
+    <div class="fab-container">
+        <button class="fab" onclick="toggleMusic()" id="musicBtn" title="Toggle Music">
+            <svg id="musicIcon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+            </svg>
+        </button>
+        <button class="fab" onclick="openDownloadModal()" title="Download">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+        </button>
+        <button class="fab" onclick="exportVideo()" title="Export Video">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+        </button>
+        <button class="fab" onclick="shareToWhatsApp()" title="Share">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+            </svg>
+        </button>
+    </div>
+
+    <!-- Title Overlay -->
+    <div class="title-overlay" id="titleOverlay">
+        <h1 class="romantic-font">Happy Birthday Ellen! 🎂</h1>
+        <p>With love from your friends & family 💕</p>
+    </div>
+
+    <!-- Slideshow -->
+    <div class="slideshow-container" id="slideshow">
+        <div class="photo-counter" id="counter">Loading...</div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls-wrapper">
+        <div class="progress-container">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+
+        <div class="controls">
+            <button class="control-btn" onclick="prevSlide()" title="Previous">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                </svg>
+            </button>
+
+            <button class="control-btn" onclick="togglePlay()" id="playBtn">
+                <svg id="playPauseIcon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span id="playPauseText">Pause</span>
+            </button>
+
+            <button class="control-btn" onclick="nextSlide()" title="Next">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Download Modal -->
+    <div class="download-modal" id="downloadModal">
+        <button class="close-modal" onclick="closeDownloadModal()">✕</button>
+        <div class="download-content">
+            <h2 class="romantic-font">Save This Memory 📸</h2>
+            <img id="downloadPreview" class="download-preview" src="" alt="Preview">
+            <div class="download-buttons">
+                <button class="download-btn primary" onclick="downloadImage()">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download
+                </button>
+                <button class="download-btn secondary" onclick="shareToWhatsApp(); closeDownloadModal();">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                    </svg>
+                    Share
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Background Music -->
+    <audio id="bgMusic" loop>
+        <source
+            src="https://res.cloudinary.com/djjgkezui/video/upload/v1770985151/Samini_-_My_Own_Lyrics_Video_mcxjre.mp3"
+            type="audio/mpeg">
+    </audio>
+
+    <script>
+        // Create floating hearts
+        function createHearts() {
+            const heartsContainer = document.getElementById('hearts');
+            const heartSymbols = ['❤️', '💕', '💗', '💖', '💘', '💝'];
+
+            for (let i = 0; i < 30; i++) {
+                const heart = document.createElement('div');
+                heart.className = 'heart';
+                heart.innerText = heartSymbols[Math.floor(Math.random() * heartSymbols.length)];
+                heart.style.left = Math.random() * 100 + 'vw';
+                heart.style.animationDuration = (Math.random() * 5 + 5) + 's';
+                heart.style.animationDelay = Math.random() * 5 + 's';
+                heart.style.fontSize = (Math.random() * 15 + 15) + 'px';
+                heartsContainer.appendChild(heart);
+            }
+        }
+        createHearts();
+
+        // Get messages from localStorage
+        const messages = JSON.parse(localStorage.getItem('ellenMessages') || '[]');
+
+        if (messages.length === 0) {
+            alert('No messages found! Please add messages first.');
+            window.location.href = 'upload.html';
+        }
+
+        const container = document.getElementById('slideshow');
+
+        // Create slides
+        messages.forEach((msg, index) => {
+            const slide = document.createElement('div');
+            slide.className = `slide ${index === 0 ? 'active' : ''}`;
+            slide.innerHTML = `
+                <img src="${msg.photo}" class="slide-image" alt="Slide ${index + 1}" 
+                     onerror="this.src='data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%25%22 height=%22100%25%22%3E%3Cdefs%3E%3ClinearGradient id=%22g%22 x1=%220%25%22 y1=%220%25%22 x2=%22100%25%22 y2=%22100%25%22%3E%3Cstop offset=%220%25%22 stop-color=%22%23ec4899%22/%3E%3Cstop offset=%22100%25%22 stop-color=%22%23f43f5e%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill=%22url(%23g)%22 width=%22100%25%22 height=%22100%25%22/%3E%3Ctext fill=%22white%22 font-size=%2224%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22%3EImage Not Found%3C/text%3E%3C/svg%3E'">
+                <div class="slide-message">
+                    <h3>${msg.name}</h3>
+                    <p>${msg.message}</p>
+                </div>
+            `;
+            container.appendChild(slide);
+        });
+
+        // State
+        let currentSlide = 0;
+        let slideDuration = 4000;
+        let progressInterval = null;
+        let progress = 0;
+        let isPlaying = true;
+
+        const slides = document.querySelectorAll('.slide');
+        const counter = document.getElementById('counter');
+        const progressBar = document.getElementById('progressBar');
+        const playBtn = document.getElementById('playBtn');
+        const music = document.getElementById('bgMusic');
+
+        counter.textContent = `1 / ${slides.length}`;
+
+        function showSlide(index) {
+            slides.forEach(slide => slide.classList.remove('active'));
+            slides[index].classList.add('active');
+            counter.textContent = `${index + 1} / ${slides.length}`;
+            progress = 0;
+            progressBar.style.width = '0%';
+        }
+
+        function nextSlide() {
+            currentSlide = (currentSlide + 1) % slides.length;
+            showSlide(currentSlide);
+        }
+
+        function prevSlide() {
+            currentSlide = (currentSlide - 1 + slides.length) % slides.length;
+            showSlide(currentSlide);
+        }
+
+        function startSlideshow() {
+            if (progressInterval) clearInterval(progressInterval);
+            isPlaying = true;
+            updatePlayButton();
+
+            progressInterval = setInterval(() => {
+                progress += 100 / (slideDuration / 100);
+                progressBar.style.width = progress + '%';
+
+                if (progress >= 100) {
+                    nextSlide();
+                    progress = 0;
+                }
+            }, 100);
+        }
+
+        function stopSlideshow() {
+            if (progressInterval) {
+                clearInterval(progressInterval);
+                progressInterval = null;
+            }
+            isPlaying = false;
+            updatePlayButton();
+        }
+
+        function togglePlay() {
+            if (isPlaying) {
+                stopSlideshow();
+            } else {
+                startSlideshow();
+            }
+        }
+
+        function updatePlayButton() {
+            const icon = document.getElementById('playPauseIcon');
+            const text = document.getElementById('playPauseText');
+
+            if (isPlaying) {
+                icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/>';
+                text.textContent = 'Pause';
+            } else {
+                icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>';
+                text.textContent = 'Play';
+            }
+        }
+
+        function toggleMusic() {
+            const icon = document.getElementById('musicIcon');
+            if (music.paused) {
+                music.play();
+                icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>';
+            } else {
+                music.pause();
+                icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/>';
+            }
+        }
+
+        function goBack() {
+            window.location.href = 'upload.html';
+        }
+
+        // Auto start
+        setTimeout(() => {
+            document.getElementById('titleOverlay').classList.add('show');
+        }, 500);
+
+        setTimeout(() => {
+            document.getElementById('titleOverlay').classList.remove('show');
+            music.play().catch(() => { });
+            startSlideshow();
+        }, 4000);
+
+        // Download Modal Functions
+        function openDownloadModal() {
+            const currentMsg = messages[currentSlide];
+            document.getElementById('downloadPreview').src = currentMsg.photo;
+            document.getElementById('downloadModal').classList.add('active');
+            stopSlideshow();
+        }
+
+        function closeDownloadModal() {
+            document.getElementById('downloadModal').classList.remove('active');
+            if (isPlaying) startSlideshow();
+        }
+
+        // Export Video
+        async function exportVideo() {
+            if (!slides.length) return;
+
+            const btn = event.target.closest('button');
+            const originalContent = btn.innerHTML;
+            btn.innerHTML = "Rendering...";
+            btn.disabled = true;
+
+            stopSlideshow();
+
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
+
+            // 📱 WhatsApp optimized 9:16
+            const width = 720;
+            const height = 1280;
+
+            canvas.width = width;
+            canvas.height = height;
+
+            const videoStream = canvas.captureStream(30);
+
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            await audioContext.resume();
+
+            const musicClone = music.cloneNode(true);
+            musicClone.currentTime = 0;
+
+            const source = audioContext.createMediaElementSource(musicClone);
+            const destination = audioContext.createMediaStreamDestination();
+
+            source.connect(destination);
+            source.connect(audioContext.destination);
+
+            const combinedStream = new MediaStream([
+                ...videoStream.getVideoTracks(),
+                ...destination.stream.getAudioTracks()
+            ]);
+
+            let mimeType = "video/webm; codecs=vp9,opus";
+            if (MediaRecorder.isTypeSupported("video/mp4; codecs=avc1.42E01E,mp4a.40.2")) {
+                mimeType = "video/mp4; codecs=avc1.42E01E,mp4a.40.2";
+            }
+
+            const recorder = new MediaRecorder(combinedStream, {
+                mimeType,
+                videoBitsPerSecond: 4_000_000   // Smaller file
+            });
+
+            const chunks = [];
+
+            recorder.ondataavailable = e => {
+                if (e.data.size > 0) chunks.push(e.data);
+            };
+
+            recorder.onstop = () => {
+                const blob = new Blob(chunks, { type: mimeType });
+                const url = URL.createObjectURL(blob);
+
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "ellen-birthday-whatsapp.mp4";
+                a.click();
+
+                btn.innerHTML = originalContent;
+                btn.disabled = false;
+
+                audioContext.close();
+            };
+
+            recorder.start();
+            await musicClone.play();
+
+            await renderIntro(ctx, width, height);
+
+            for (let msg of messages) {
+                await renderModernSlide(ctx, width, height, msg);
+            }
+
+            recorder.stop();
+        }
+
+        async function renderIntro(ctx, width, height) {
+            const fps = 30;
+            const frames = 60;
+
+            for (let i = 0; i < frames; i++) {
+                ctx.fillStyle = "#000";
+                ctx.fillRect(0, 0, width, height);
+
+                ctx.textAlign = "center";
+
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "bold 60px Poppins";
+                ctx.fillText("Happy Birthday", width / 2, height / 2 - 40);
+
+                ctx.font = "bold 80px Dancing Script";
+                ctx.fillText("Ellen 🎂", width / 2, height / 2 + 60);
+
+                await new Promise(r => setTimeout(r, 1000 / fps));
+            }
+        }
+
+        async function renderModernSlide(ctx, width, height, msg) {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            await new Promise(resolve => { img.onload = resolve; img.src = msg.photo; });
+
+            const fps = 30;
+            const frames = 90;
+
+            for (let frame = 0; frame < frames; frame++) {
+
+                ctx.clearRect(0, 0, width, height);
+
+                // Cover image
+                const imgRatio = img.width / img.height;
+                const canvasRatio = width / height;
+
+                let sx = 0, sy = 0, sw = img.width, sh = img.height;
+
+                if (imgRatio > canvasRatio) {
+                    sw = img.height * canvasRatio;
+                    sx = (img.width - sw) / 2;
+                } else {
+                    sh = img.width / canvasRatio;
+                    sy = (img.height - sh) / 2;
+                }
+
+                ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height);
+
+                // 🎨 GLASS CARD
+                const cardWidth = width * 0.88;
+                const cardHeight = height * 0.28;
+                const cardX = (width - cardWidth) / 2;
+                const cardY = height - cardHeight - 80;
+
+                // Soft blur background
+                ctx.fillStyle = "rgba(255,255,255,0.12)";
+                ctx.beginPath();
+                ctx.roundRect(cardX, cardY, cardWidth, cardHeight, 30);
+                ctx.fill();
+
+                // Gradient border glow
+                const gradient = ctx.createLinearGradient(cardX, cardY, cardX + cardWidth, cardY);
+                gradient.addColorStop(0, "#ec4899");
+                gradient.addColorStop(1, "#f43f5e");
+
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = gradient;
+                ctx.stroke();
+
+                ctx.textAlign = "center";
+                ctx.fillStyle = "#ffffff";
+
+                // Name (modern bold)
+                ctx.font = "bold 38px Poppins";
+                ctx.fillText(msg.name, width / 2, cardY + 60);
+
+                // Message (clean spacing)
+                ctx.font = "28px Poppins";
+                wrapTextCanvas(
+                    ctx,
+                    msg.message,
+                    width / 2,
+                    cardY + 110,
+                    cardWidth - 80,
+                    36
+                );
+
+                await new Promise(r => setTimeout(r, 1000 / fps));
+            }
+        }
+        
+        async function renderSlideReel(ctx, width, height, msg) {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            await new Promise(resolve => { img.onload = resolve; img.src = msg.photo; });
+
+            const duration = 3500;
+            const fps = 30;
+            const frames = (duration / 1000) * fps;
+
+            for (let frame = 0; frame < frames; frame++) {
+
+                ctx.clearRect(0, 0, width, height);
+
+                // COVER IMAGE (like object-fit: cover)
+                const imgRatio = img.width / img.height;
+                const canvasRatio = width / height;
+
+                let sx = 0, sy = 0, sw = img.width, sh = img.height;
+
+                if (imgRatio > canvasRatio) {
+                    sw = img.height * canvasRatio;
+                    sx = (img.width - sw) / 2;
+                } else {
+                    sh = img.width / canvasRatio;
+                    sy = (img.height - sh) / 2;
+                }
+
+                ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height);
+
+                // MESSAGE BOX (exact bottom style)
+                const boxWidth = width * 0.85;
+                const boxHeight = height * 0.25;
+                const boxX = (width - boxWidth) / 2;
+                const boxY = height - boxHeight - 120;
+
+                const gradient = ctx.createLinearGradient(0, boxY, 0, boxY + boxHeight);
+                gradient.addColorStop(0, "rgba(236,72,153,0.9)");
+                gradient.addColorStop(1, "rgba(244,63,94,0.9)");
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 40);
+                ctx.fill();
+
+                ctx.fillStyle = "white";
+                ctx.textAlign = "center";
+
+                // Name
+                ctx.font = "bold 55px Poppins";
+                ctx.fillText(msg.name, width / 2, boxY + 80);
+
+                // Message
+                ctx.font = "40px Poppins";
+                wrapTextCanvas(
+                    ctx,
+                    msg.message,
+                    width / 2,
+                    boxY + 140,
+                    boxWidth - 100,
+                    50
+                );
+
+                await new Promise(r => setTimeout(r, 1000 / fps));
+            }
+        }
+
+        function wrapTextCanvas(ctx, text, x, y, maxWidth, lineHeight) {
+            const words = text.split(" ");
+            let line = "";
+            let lines = [];
+
+            for (let n = 0; n < words.length; n++) {
+                let testLine = line + words[n] + " ";
+                let metrics = ctx.measureText(testLine);
+                if (metrics.width > maxWidth && n > 0) {
+                    lines.push(line);
+                    line = words[n] + " ";
+                } else {
+                    line = testLine;
+                }
+            }
+            lines.push(line);
+
+            lines.forEach((l, i) => {
+                ctx.fillText(l.trim(), x, y + i * lineHeight);
+            });
+        }
+        // Modern Download with Message
+        async function downloadImage() {
+            const currentMsg = messages[currentSlide];
+            const imageUrl = currentMsg.photo;
+
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+
+            await new Promise(resolve => {
+                img.onload = resolve;
+                img.onerror = resolve;
+                img.src = imageUrl;
+            });
+
+            if (!img.width) {
+                alert("Image failed to load. Try again.");
+                return;
+            }
+
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+
+            const padding = canvas.width * 0.05;
+            const boxWidth = canvas.width * 0.85;
+            const boxX = (canvas.width - boxWidth) / 2;
+            const nameFontSize = canvas.width * 0.055;
+            const messageFontSize = canvas.width * 0.04;
+            const lineHeight = messageFontSize * 1.5;
+
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+
+            function wrapText(text, maxWidth) {
+                const words = text.split(" ");
+                let lines = [], line = "";
+                for (let word of words) {
+                    const testLine = line + word + " ";
+                    if (ctx.measureText(testLine).width > maxWidth && line !== "") {
+                        lines.push(line.trim());
+                        line = word + " ";
+                    } else line = testLine;
+                }
+                lines.push(line.trim());
+                return lines;
+            }
+
+            ctx.font = `${messageFontSize}px Outfit, sans-serif`;
+            const messageLines = wrapText(currentMsg.message, boxWidth - padding * 2);
+            const boxHeight = padding + nameFontSize + padding / 2 + messageLines.length * lineHeight + padding;
+            const boxY = canvas.height - boxHeight - canvas.width * 0.05;
+            const radius = canvas.width * 0.03;
+
+            // Gradient background
+            const gradient = ctx.createLinearGradient(boxX, boxY, boxX, boxY + boxHeight);
+            gradient.addColorStop(0, "rgba(236,72,153,0.9)");
+            gradient.addColorStop(1, "rgba(244,63,94,0.9)");
+            ctx.fillStyle = gradient;
+
+            // Rounded rectangle
+            ctx.beginPath();
+            ctx.moveTo(boxX + radius, boxY);
+            ctx.lineTo(boxX + boxWidth - radius, boxY);
+            ctx.quadraticCurveTo(boxX + boxWidth, boxY, boxX + boxWidth, boxY + radius);
+            ctx.lineTo(boxX + boxWidth, boxY + boxHeight - radius);
+            ctx.quadraticCurveTo(boxX + boxWidth, boxY + boxHeight, boxX + boxWidth - radius, boxY + boxHeight);
+            ctx.lineTo(boxX + radius, boxY + boxHeight);
+            ctx.quadraticCurveTo(boxX, boxY + boxHeight, boxX, boxY + boxHeight - radius);
+            ctx.lineTo(boxX, boxY + radius);
+            ctx.quadraticCurveTo(boxX, boxY, boxX + radius, boxY);
+            ctx.closePath();
+            ctx.fill();
+
+            // Name
+            ctx.fillStyle = "#fff";
+            ctx.font = `bold ${nameFontSize}px Outfit, sans-serif`;
+            ctx.fillText(currentMsg.name, canvas.width / 2, boxY + padding);
+
+            // Message
+            ctx.font = `${messageFontSize}px Outfit, sans-serif`;
+            let startY = boxY + padding + nameFontSize + padding / 2;
+            messageLines.forEach(line => {
+                ctx.fillText(line, canvas.width / 2, startY);
+                startY += lineHeight;
+            });
+
+            canvas.toBlob(blob => {
+                if (!blob) { alert("Download failed."); return; }
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = `ellen-birthday-${currentSlide + 1}.jpg`;
+                link.click();
+            }, "image/jpeg", 0.95);
+        }
+
+        function shareToWhatsApp() {
+            const currentMsg = messages[currentSlide];
+            const message = encodeURIComponent(`"${currentMsg.message}"\n\n- ${currentMsg.name}\n\n🎂 Happy Birthday Ellen! 💕`);
+            window.open(`https://wa.me/?text=${message}`, '_blank');
+        }
+
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ') nextSlide();
+            else if (e.key === 'ArrowLeft') prevSlide();
+            else if (e.key === 'p' || e.key === 'P') togglePlay();
+            else if (e.key === 'm' || e.key === 'M') toggleMusic();
+            else if (e.key === 'Escape') closeDownloadModal();
+        });
+
+        // Touch swipe
+        let touchStartX = 0;
+        document.addEventListener('touchstart', e => touchStartX = e.touches[0].clientX);
+        document.addEventListener('touchend', e => {
+            const diff = touchStartX - e.changedTouches[0].clientX;
+            if (Math.abs(diff) > 50) diff > 0 ? nextSlide() : prevSlide();
+        });
+    </script>
+</body>
+
+</html>
