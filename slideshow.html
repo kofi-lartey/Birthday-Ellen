@@ -12,6 +12,10 @@
         href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap"
         rel="stylesheet">
 
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
+
     <style>
         :root {
             --primary: #ec4899;
@@ -676,17 +680,35 @@
         }
         createHearts();
 
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyD7y5ouo_sq1UpVfGZ8c95o1XkNWcMopoM",
+            authDomain: "ellen-birthday.firebaseapp.com",
+            projectId: "ellen-birthday",
+            storageBucket: "ellen-birthday.firebasestorage.app",
+            messagingSenderId: "423290705776",
+            appId: "1:423290705776:web:7c39e130d2334b7c2a61b5"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const storage = firebase.storage();
+        const storageRef = storage.ref();
+
         // Get messages from localStorage
         const messages = JSON.parse(localStorage.getItem('ellenMessages') || '[]');
 
-        if (messages.length === 0) {
+        // Also get Firebase photos
+        const firebasePhotos = JSON.parse(localStorage.getItem('ellenFirebasePhotos') || '[]');
+
+        if (messages.length === 0 && firebasePhotos.length === 0) {
             alert('No messages found! Please add messages first.');
             window.location.href = 'upload.html';
         }
 
         const container = document.getElementById('slideshow');
 
-        // Create slides
+        // Create slides from messages
         messages.forEach((msg, index) => {
             const slide = document.createElement('div');
             slide.className = `slide ${index === 0 ? 'active' : ''}`;
@@ -696,6 +718,21 @@
                 <div class="slide-message">
                     <h3>${msg.name}</h3>
                     <p>${msg.message}</p>
+                </div>
+            `;
+            container.appendChild(slide);
+        });
+
+        // Add Firebase photos as additional slides
+        firebasePhotos.forEach((photoUrl, index) => {
+            const slide = document.createElement('div');
+            slide.className = `slide`;
+            slide.innerHTML = `
+                <img src="${photoUrl}" class="slide-image" alt="Firebase Photo ${index + 1}" 
+                     onerror="this.src='data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%25%22 height=%22100%25%22%3E%3Cdefs%3E%3ClinearGradient id=%22g%22 x1=%220%25%22 y1=%220%25%22 x2=%22100%25%22 y2=%22100%25%22%3E%3Cstop offset=%220%25%22 stop-color=%22%23ec4899%22/%3E%3Cstop offset=%22100%25%22 stop-color=%22%23f43f5e%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill=%22url(%23g)%22 width=%22100%25%22 height=%22100%25%22/%3E%3Ctext fill=%22white%22 font-size=%2224%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22%3EImage Not Found%3C/text%3E%3C/svg%3E'">
+                <div class="slide-message">
+                    <h3>☁️ From the Cloud</h3>
+                    <p>A special memory shared with love</p>
                 </div>
             `;
             container.appendChild(slide);
@@ -993,7 +1030,7 @@
                 await new Promise(r => setTimeout(r, 1000 / fps));
             }
         }
-        
+
         async function renderSlideReel(ctx, width, height, msg) {
             const img = new Image();
             img.crossOrigin = "anonymous";

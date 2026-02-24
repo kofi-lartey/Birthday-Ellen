@@ -15,6 +15,10 @@
     <!-- Cloudinary Upload Widget -->
     <script src="https://upload-widget.cloudinary.com/global/all.js" type="text/javascript"></script>
 
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
+
     <style>
         body {
             font-family: 'Poppins', sans-serif;
@@ -82,7 +86,7 @@
 <body class="p-4 md:p-6">
     <!-- Return to Homepage -->
     <div class="fixed top-4 left-4 z-50">
-        <a href="index.html" 
+        <a href="index.html"
             class="bg-rose-500 text-white px-4 py-2 rounded-full text-sm hover:bg-rose-600 transition shadow-lg">
             ← Homepage
         </a>
@@ -192,6 +196,21 @@
     </div>
 
     <script>
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyD7y5ouo_sq1UpVfGZ8c95o1XkNWcMopoM",
+            authDomain: "ellen-birthday.firebaseapp.com",
+            projectId: "ellen-birthday",
+            storageBucket: "ellen-birthday.firebasestorage.app",
+            messagingSenderId: "423290705776",
+            appId: "1:423290705776:web:7c39e130d2334b7c2a61b5"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const storage = firebase.storage();
+        const storageRef = storage.ref();
+
         // Store uploaded photos in localStorage
         let uploadedPhotos = JSON.parse(localStorage.getItem('ellenPhotos') || '[]');
 
@@ -239,10 +258,87 @@
 
                 if (!error && result && result.event === "success") {
                     addPhoto(result.info.secure_url);
+
+                    // Also upload to Firebase for central storage
+                    uploadToFirebaseFromUrl(result.info.secure_url);
                 }
             });
 
             widget.open();
+        }
+
+        // Firebase Upload Function
+        async function uploadToFirebaseStorage(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            if (file.size > 5 * 1024 * 1024) {
+                alert('File too large! Max 5MB');
+                return;
+            }
+
+            document.getElementById('uploadProgress').classList.remove('hidden');
+
+            try {
+                // Create a unique filename
+                const timestamp = Date.now();
+                const randomStr = Math.random().toString(36).substring(7);
+                const fileName = `birthday_${timestamp}_${randomStr}.${file.name.split('.').pop()}`;
+
+                const imageRef = storageRef.child('images/' + fileName);
+
+                // Upload the file
+                const snapshot = await imageRef.put(file);
+                const downloadURL = await snapshot.ref.getDownloadURL();
+
+                // Add to local storage
+                addPhoto(downloadURL);
+
+                // Also save to Firebase messages list for global access
+                saveToFirebaseMessages(downloadURL);
+
+                showNotification('☁️ Uploaded to Firebase! 📸');
+            } catch (error) {
+                console.error('Firebase upload error:', error);
+                alert('Upload failed. Please try again.');
+            } finally {
+                document.getElementById('uploadProgress').classList.add('hidden');
+                input.value = ''; // Reset input
+            }
+        }
+
+        // Save photo URL to Firebase-accessible storage
+        function saveToFirebaseMessages(photoUrl) {
+            const firebasePhotos = JSON.parse(localStorage.getItem('ellenFirebasePhotos') || '[]');
+            firebasePhotos.push(photoUrl);
+            localStorage.setItem('ellenFirebasePhotos', JSON.stringify(firebasePhotos));
+        }
+
+        // Upload image from Cloudinary URL to Firebase Storage
+        async function uploadToFirebaseFromUrl(cloudinaryUrl) {
+            try {
+                // Fetch the image from Cloudinary
+                const response = await fetch(cloudinaryUrl);
+                const blob = await response.blob();
+
+                // Create a unique filename
+                const timestamp = Date.now();
+                const randomStr = Math.random().toString(36).substring(7);
+                const fileName = `cloudinary_${timestamp}_${randomStr}.jpg`;
+
+                const imageRef = storageRef.child('images/' + fileName);
+
+                // Upload to Firebase
+                const snapshot = await imageRef.put(blob);
+                const firebaseUrl = await snapshot.ref.getDownloadURL();
+
+                // Save to localStorage for global access
+                saveToFirebaseMessages(firebaseUrl);
+
+                console.log('Image saved to Firebase Storage');
+            } catch (error) {
+                console.error('Error uploading to Firebase:', error);
+            }
         }
 
         function addPhoto(url) {

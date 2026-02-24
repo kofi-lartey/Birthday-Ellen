@@ -452,6 +452,9 @@
             <img src="https://res.cloudinary.com/djjgkezui/image/upload/v1771045092/IMG-20250301-WA0000_am4agl.jpg"
                 alt="Memory 14"
                 class="gallery-item rounded-2xl shadow-lg snap-center min-w-[280px] h-[400px] object-cover">
+
+            <!-- Firebase Photos Container - Photos uploaded via Firebase will appear here -->
+            <div id="firebaseGallery" class="flex space-x-6"></div>
         </div>
 
         <p class="text-center text-gray-500 mt-6">Swipe to see more 💫</p>
@@ -500,7 +503,26 @@
             type="audio/mpeg">
     </audio>
 
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
+
     <script>
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyD7y5ouo_sq1UpVfGZ8c95o1XkNWcMopoM",
+            authDomain: "ellen-birthday.firebaseapp.com",
+            projectId: "ellen-birthday",
+            storageBucket: "ellen-birthday.firebasestorage.app",
+            messagingSenderId: "423290705776",
+            appId: "1:423290705776:web:7c39e130d2334b7c2a61b5"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const storage = firebase.storage();
+        const storageRef = storage.ref();
+
         // Navigation functions
         function goToUpload() {
             window.location.href = 'upload.html';
@@ -749,7 +771,26 @@ Your special someone 💖`;
                 "https://picsum.photos/seed/love2/400/500",
                 "https://picsum.photos/seed/love3/400/500"
             ];
+
+            // Load Firebase photos into gallery
+            loadFirebaseGallery();
         });
+
+        // Load Firebase photos into gallery
+        function loadFirebaseGallery() {
+            const firebasePhotos = JSON.parse(localStorage.getItem('ellenFirebasePhotos') || '[]');
+            const galleryContainer = document.getElementById('firebaseGallery');
+
+            if (firebasePhotos.length > 0 && galleryContainer) {
+                firebasePhotos.forEach((photoUrl, index) => {
+                    const img = document.createElement('img');
+                    img.src = photoUrl;
+                    img.alt = `Cloud Photo ${index + 1}`;
+                    img.className = 'gallery-item rounded-2xl shadow-lg snap-center min-w-[280px] h-[400px] object-cover';
+                    galleryContainer.appendChild(img);
+                });
+            }
+        }
     </script>
 </body>
 
