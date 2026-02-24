@@ -319,6 +319,11 @@
             try {
                 // Fetch the image from Cloudinary
                 const response = await fetch(cloudinaryUrl);
+
+                if (!response.ok) {
+                    throw new Error('Failed to fetch image');
+                }
+
                 const blob = await response.blob();
 
                 // Create a unique filename
@@ -338,6 +343,9 @@
                 console.log('Image saved to Firebase Storage');
             } catch (error) {
                 console.error('Error uploading to Firebase:', error);
+
+                // Fallback: Save Cloudinary URL directly (it's already public)
+                saveToFirebaseMessages(cloudinaryUrl);
             }
         }
 

@@ -134,7 +134,11 @@
                 <div class="grid grid-cols-2 gap-4">
                     <div class="text-center p-4 bg-rose-50 rounded-xl">
                         <div class="text-3xl font-bold text-rose-500" id="photoCount">0</div>
-                        <div class="text-gray-500 text-sm">Photos Uploaded</div>
+                        <div class="text-gray-500 text-sm">Cloudinary Photos</div>
+                    </div>
+                    <div class="text-center p-4 bg-pink-50 rounded-xl">
+                        <div class="text-3xl font-bold text-pink-500" id="firebasePhotoCount">0</div>
+                        <div class="text-gray-500 text-sm">Firebase Photos</div>
                     </div>
                     <div class="text-center p-4 bg-pink-50 rounded-xl">
                         <div class="text-3xl font-bold text-pink-500" id="viewerCount">0</div>
@@ -224,6 +228,10 @@
         function updateStats() {
             const photos = JSON.parse(localStorage.getItem('ellenPhotos') || '[]');
             document.getElementById('photoCount').textContent = photos.length;
+
+            // Get Firebase photos count
+            const firebasePhotos = JSON.parse(localStorage.getItem('ellenFirebasePhotos') || '[]');
+            document.getElementById('firebasePhotoCount').textContent = firebasePhotos.length;
 
             // Simple view counter
             let views = parseInt(localStorage.getItem('ellenViews') || '0');
