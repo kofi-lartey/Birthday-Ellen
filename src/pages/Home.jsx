@@ -23,7 +23,13 @@ function Home() {
 
     const letterText = `My dearest Ellen,
 
-Another year has passed, and my love for you only grows stronger. You are my sunshine on cloudy days, my smile when I'm sad, my everything. Today we celebrate the day the most amazing person came into this world – YOU! Thank you for being my partner, my best friend, and my soulmate. I love you more than words can ever express! 💖`
+They say time flies, but with you, it feels like every moment is worth savoring. Reflecting on another year together, I realized that you aren't just a part of my life—you are the heartbeat of it.
+
+You have this incredible way of being my "everything." You're my peace when things are chaotic and my joy when things are quiet. Thank you for simply being you. Today is a celebration of your light, your heart, and the day the world got a whole lot brighter.
+
+I love you beyond measure, beyond words, and beyond today.
+
+Always yours, 💖`
 
     // Load Firebase photos
     useEffect(() => {
