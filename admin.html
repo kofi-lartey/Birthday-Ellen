@@ -12,6 +12,9 @@
         href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&family=Poppins:wght@300;400;600&display=swap"
         rel="stylesheet">
 
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
     <style>
         body {
             font-family: 'Poppins', sans-serif;
@@ -188,6 +191,20 @@
     </div>
 
     <script>
+        // Supabase Configuration
+        const supabaseUrl = 'https://iyslevrqnzlgsfvqcekt.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5c2xldnJxbnpsZ3NmdnFjZWt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NzE5NjEsImV4cCI6MjA4NzU0Nzk2MX0.WJpAGcB19xvOFnsG0ZD7pckNe7iIma3STtzTs7ZQCFc';
+
+        // Initialize Supabase with error handling
+        let supabaseClient = null;
+        try {
+            if (window.supabase && window.supabase.createClient) {
+                supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+            }
+        } catch (e) {
+            console.error('Supabase initialization failed:', e);
+        }
+
         // Ellen's credentials - CHANGE THESE for security
         const ADMIN_USER = "ellen";
         const ADMIN_PASS = "ellen2025"; // Ellen can change this
@@ -229,9 +246,8 @@
             const photos = JSON.parse(localStorage.getItem('ellenPhotos') || '[]');
             document.getElementById('photoCount').textContent = photos.length;
 
-            // Get Firebase photos count
-            const firebasePhotos = JSON.parse(localStorage.getItem('ellenFirebasePhotos') || '[]');
-            document.getElementById('firebasePhotoCount').textContent = firebasePhotos.length;
+            // Get Supabase photos count
+            loadSupabaseCount();
 
             // Simple view counter
             let views = parseInt(localStorage.getItem('ellenViews') || '0');
@@ -243,6 +259,20 @@
 
             // Load MoMo number
             document.getElementById('momoNumber').value = localStorage.getItem('ellenMomoNumber') || '';
+        }
+
+        async function loadSupabaseCount() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('photos')
+                    .select('*', { count: 'exact' });
+
+                if (error) throw error;
+                document.getElementById('firebasePhotoCount').textContent = data ? data.length : 0;
+            } catch (error) {
+                console.error('Error loading Supabase count:', error);
+                document.getElementById('firebasePhotoCount').textContent = '0';
+            }
         }
 
         function saveMomoNumber() {

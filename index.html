@@ -7,6 +7,8 @@
     <title>Happy Birthday My Love ❤️</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -503,32 +505,27 @@
             type="audio/mpeg">
     </audio>
 
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
-
     <script>
-        // Firebase Configuration
-        const firebaseConfig = {
-            apiKey: "AIzaSyD7y5ouo_sq1UpVfGZ8c95o1XkNWcMopoM",
-            authDomain: "ellen-birthday.firebaseapp.com",
-            projectId: "ellen-birthday",
-            storageBucket: "ellen-birthday.firebasestorage.app",
-            messagingSenderId: "423290705776",
-            appId: "1:423290705776:web:7c39e130d2334b7c2a61b5"
-        };
+        // Supabase Configuration
+        const supabaseUrl = 'https://iyslevrqnzlgsfvqcekt.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5c2xldnJxbnpsZ3NmdnFjZWt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NzE5NjEsImV4cCI6MjA4NzU0Nzk2MX0.WJpAGcB19xvOFnsG0ZD7pckNe7iIma3STtzTs7ZQCFc';
 
-        // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
-        const storage = firebase.storage();
-        const storageRef = storage.ref();
-
-        // Navigation functions
-        function goToUpload() {
-            window.location.href = 'upload.html';
+        // Initialize Supabase with error handling (use existing window.supabase if available)
+        let supabaseClient = null;
+        try {
+            if (window.supabase && window.supabase.createClient) {
+                supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+            }
+        } catch (e) {
+            console.error('Supabase initialization failed:', e);
         }
 
-        function openGiftModal() {
+        // Navigation functions
+        window.goToUpload = function () {
+            window.location.href = 'upload.html';
+        };
+
+        window.openGiftModal = function () {
             const momoNumber = localStorage.getItem('ellenMomoNumber');
             const momoInfo = document.getElementById('momoInfo');
 
@@ -540,15 +537,15 @@
             }
 
             document.getElementById('giftModal').classList.remove('hidden');
-        }
+        };
 
-        function closeGiftModal() {
+        window.closeGiftModal = function () {
             document.getElementById('giftModal').classList.add('hidden');
             document.getElementById('giverName').value = '';
             document.getElementById('giftMessage').value = '';
-        }
+        };
 
-        function sendGift() {
+        window.sendGift = function () {
             const name = document.getElementById('giverName').value || 'Anonymous';
             const message = document.getElementById('giftMessage').value || 'Happy Birthday Ellen!';
 
@@ -559,12 +556,12 @@
 
             alert(`🎁 Gift sent from ${name}! Thank you!`);
             closeGiftModal();
-        }
+        };
 
         /* 🎵 MUSIC TOGGLE */
         let musicPlaying = false;
 
-        function toggleMusic() {
+        window.toggleMusic = function () {
             const music = document.getElementById("bgMusic");
             const icon = document.getElementById("musicIcon");
 
@@ -576,10 +573,10 @@
                 icon.textContent = "🎶";
             }
             musicPlaying = !musicPlaying;
-        }
+        };
 
         /* 🔐 PASSWORD - Change "LOVE" to your custom password */
-        function checkPassword() {
+        window.checkPassword = function () {
             const correctPassword = "LOVE"; // CHANGE THIS to your secret code
             const input = document.getElementById("passwordInput").value.toUpperCase();
             const errorMsg = document.getElementById("errorMessage");
@@ -594,7 +591,7 @@
                 errorMsg.classList.remove("hidden");
                 setTimeout(() => errorMsg.classList.add("hidden"), 2000);
             }
-        }
+        };
 
         /* 🎬 SLIDESHOW */
         let slides = document.querySelectorAll(".slide-text");
@@ -691,7 +688,7 @@ Your special someone 💖`;
         }
 
         /* 🎁 GIFT + CONFETTI */
-        function revealGift() {
+        window.revealGift = function () {
             // Check countdown - if distance <= 0, birthday has arrived
             const now = new Date().getTime();
             const distance = birthday - now;
@@ -704,7 +701,7 @@ Your special someone 💖`;
 
             // Countdown is up! Go to slideshow
             window.location.href = 'slideshow.html';
-        }
+        };
 
         /* 💬 POPUP */
         setTimeout(() => {
@@ -776,19 +773,33 @@ Your special someone 💖`;
             loadFirebaseGallery();
         });
 
-        // Load Firebase photos into gallery
-        function loadFirebaseGallery() {
-            const firebasePhotos = JSON.parse(localStorage.getItem('ellenFirebasePhotos') || '[]');
-            const galleryContainer = document.getElementById('firebaseGallery');
+        // Load Supabase photos into gallery
+        async function loadFirebaseGallery() {
+            if (!supabaseClient) {
+                console.log('Supabase not initialized, skipping gallery load');
+                return;
+            }
+            try {
+                const { data, error } = await supabaseClient
+                    .from('photos')
+                    .select('*')
+                    .order('created_at', { ascending: true });
 
-            if (firebasePhotos.length > 0 && galleryContainer) {
-                firebasePhotos.forEach((photoUrl, index) => {
-                    const img = document.createElement('img');
-                    img.src = photoUrl;
-                    img.alt = `Cloud Photo ${index + 1}`;
-                    img.className = 'gallery-item rounded-2xl shadow-lg snap-center min-w-[280px] h-[400px] object-cover';
-                    galleryContainer.appendChild(img);
-                });
+                if (error) throw error;
+
+                const galleryContainer = document.getElementById('firebaseGallery');
+
+                if (data && data.length > 0 && galleryContainer) {
+                    data.forEach((photo, index) => {
+                        const img = document.createElement('img');
+                        img.src = photo.image_url;
+                        img.alt = `Cloud Photo ${index + 1}`;
+                        img.className = 'gallery-item rounded-2xl shadow-lg snap-center min-w-[280px] h-[400px] object-cover';
+                        galleryContainer.appendChild(img);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading from Supabase:', error);
             }
         }
     </script>

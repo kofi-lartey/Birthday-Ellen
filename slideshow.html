@@ -12,9 +12,8 @@
         href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap"
         rel="stylesheet">
 
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
         :root {
@@ -680,23 +679,55 @@
         }
         createHearts();
 
-        // Firebase Configuration
-        const firebaseConfig = {
-            apiKey: "AIzaSyD7y5ouo_sq1UpVfGZ8c95o1XkNWcMopoM",
-            authDomain: "ellen-birthday.firebaseapp.com",
-            projectId: "ellen-birthday",
-            storageBucket: "ellen-birthday.firebasestorage.app",
-            messagingSenderId: "423290705776",
-            appId: "1:423290705776:web:7c39e130d2334b7c2a61b5"
-        };
+        // Supabase Configuration
+        const supabaseUrl = 'https://iyslevrqnzlgsfvqcekt.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5c2xldnJxbnpsZ3NmdnFjZWt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NzE5NjEsImV4cCI6MjA4NzU0Nzk2MX0.WJpAGcB19xvOFnsG0ZD7pckNe7iIma3STtzTs7ZQCFc';
 
-        // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
-        const storage = firebase.storage();
-        const storageRef = storage.ref();
+        // Initialize Supabase with error handling
+        let supabaseClient = null;
+        try {
+            if (window.supabase && window.supabase.createClient) {
+                supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+            }
+        } catch (e) {
+            console.error('Supabase initialization failed:', e);
+        }
 
         // Get messages from localStorage
         const messages = JSON.parse(localStorage.getItem('ellenMessages') || '[]');
+
+        // Load photos from Supabase
+        loadSupabasePhotos();
+
+        async function loadSupabasePhotos() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('photos')
+                    .select('*')
+                    .order('created_at', { ascending: true });
+
+                if (error) throw error;
+
+                // Add Supabase photos to slideshow
+                if (data && data.length > 0) {
+                    data.forEach((photo, index) => {
+                        const slide = document.createElement('div');
+                        slide.className = `slide`;
+                        slide.innerHTML = `
+                            <img src="${photo.image_url}" class="slide-image" alt="Photo ${index + 1}" 
+                                 onerror="this.src='data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%25%22 height=%22100%25%22%3E%3Cdefs%3E%3ClinearGradient id=%22g%22 x1=%220%25%22 y1=%220%25%22 x2=%22100%25%22 y2=%22100%25%22%3E%3Cstop offset=%220%25%22 stop-color=%22%23ec4899%22/%3E%3Cstop offset=%22100%25%22 stop-color=%22%23f43f5e%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill=%22url(%23g)%22 width=%22100%25%22 height=%22100%25%22/%3E%3Ctext fill=%22white%22 font-size=%2224%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22%3EImage Not Found%3C/text%3E%3C/svg%3E'">
+                            <div class="slide-message">
+                                <h3>☁️ From The Cloud</h3>
+                                <p>A special memory shared with love</p>
+                            </div>
+                        `;
+                        container.appendChild(slide);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading from Supabase:', error);
+            }
+        }
 
         // Also get Firebase photos
         const firebasePhotos = JSON.parse(localStorage.getItem('ellenFirebasePhotos') || '[]');
