@@ -10,8 +10,9 @@ build/
 .env.local
 .env.*.local
 
-# Supabase configuration (contains sensitive credentials)
-src/supabase.js
+# Supabase configuration
+# Note: Keep src/supabase.js in git but use environment variables for credentials
+# Example: VITE_SUPABASE_URL and VITE_SUPABASE_KEY in Netlify dashboard
 
 # OS files
 .DS_Store
