@@ -365,3 +365,329 @@ body {
     background: rgba(255, 255, 255, 0.2);
     transform: scale(1.05);
 }
+
+.fab-container {
+    display: flex;
+    gap: 10px;
+}
+
+.fab.back {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+}
+
+/* Controls wrapper */
+.controls-wrapper {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+/* Control buttons */
+.control-btn {
+    background: transparent;
+    border: none;
+    color: white;
+    padding: 10px 16px;
+    border-radius: 30px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.control-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+}
+
+.control-btn.primary {
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    padding: 10px 20px;
+}
+
+.control-btn.primary:hover {
+    background: linear-gradient(135deg, var(--secondary), var(--primary));
+    box-shadow: 0 4px 20px rgba(236, 72, 153, 0.5);
+}
+
+.control-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Divider */
+.divider {
+    width: 1px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.2);
+    margin: 0 4px;
+}
+
+/* Photo counter */
+.photo-counter {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    z-index: 100;
+}
+
+/* Title overlay */
+.title-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(ellipse at center, rgba(236, 72, 153, 0.3) 0%, rgba(0, 0, 0, 0.9) 100%);
+    z-index: 150;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 1s ease;
+}
+
+.title-overlay.show {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.title-overlay h1 {
+    font-size: clamp(2.5rem, 8vw, 5rem);
+    color: white;
+    text-shadow: 0 4px 30px rgba(236, 72, 153, 0.5);
+    animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+.title-overlay p {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 1.25rem;
+    margin-top: 16px;
+    font-weight: 300;
+}
+
+.romantic-font {
+    font-family: 'Playfair Display', serif;
+}
+
+/* Floating hearts */
+.hearts {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 149;
+    overflow: hidden;
+}
+
+.heart {
+    position: absolute;
+    color: rgba(236, 72, 153, 0.6);
+    font-size: 20px;
+    animation: fall linear forwards;
+}
+
+@keyframes fall {
+    0% {
+        transform: translateY(-10vh) rotate(0deg);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateY(110vh) rotate(360deg);
+        opacity: 0;
+    }
+}
+
+/* Download modal */
+.download-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(10px);
+    z-index: 300;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.3s ease;
+}
+
+.download-modal.active {
+    display: flex;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.download-content {
+    background: linear-gradient(145deg, #1a1a2e, #16162a);
+    border-radius: 24px;
+    padding: 32px;
+    text-align: center;
+    max-width: 90%;
+    max-height: 85%;
+    overflow: auto;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5);
+    position: relative;
+    animation: scaleIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes scaleIn {
+    from {
+        transform: scale(0.9);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.download-content h2 {
+    background: linear-gradient(135deg, var(--primary), #f472b6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 24px;
+    font-size: 1.5rem;
+}
+
+.download-preview {
+    max-width: 100%;
+    max-height: 50vh;
+    border-radius: 16px;
+    margin-bottom: 24px;
+}
+
+.download-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.download-btn {
+    padding: 14px 28px;
+    border-radius: 16px;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.download-btn.primary {
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    color: white;
+}
+
+.download-btn.primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(236, 72, 153, 0.4);
+}
+
+.download-btn.secondary {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.download-btn.secondary:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.close-modal {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    font-size: 18px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.close-modal:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: rotate(90deg);
+}
+
+/* Mobile adjustments */
+@media (max-width: 640px) {
+    .slide-message {
+        bottom: 160px;
+        padding: 20px 24px;
+        min-width: 280px;
+    }
+
+    .slide-message h3 {
+        font-size: 1.25rem;
+    }
+
+    .slide-message p {
+        font-size: 1rem;
+    }
+
+    .controls {
+        padding: 10px 16px;
+        gap: 4px;
+    }
+
+    .control-btn {
+        padding: 8px 12px;
+        font-size: 12px;
+    }
+}

@@ -9,7 +9,7 @@ function Admin() {
     const [password, setPassword] = useState('')
     const [error, setError] = useState(false)
     const [photoCount, setPhotoCount] = useState(0)
-    const [firebasePhotoCount, setFirebasePhotoCount] = useState(0)
+    const [supabasePhotoCount, setSupabasePhotoCount] = useState(0)
     const [viewerCount, setViewerCount] = useState(0)
     const [momoNumber, setMomoNumber] = useState('')
     const [momoStatus, setMomoStatus] = useState(false)
@@ -44,7 +44,7 @@ function Admin() {
                 .select('*', { count: 'exact' })
 
             if (data) {
-                setFirebasePhotoCount(data.length)
+                setSupabasePhotoCount(data.length)
             }
         } catch (err) {
             console.error('Error loading Supabase count:', err)
@@ -173,6 +173,13 @@ function Admin() {
 
     return (
         <div className="flex items-center justify-center p-6 min-h-screen" style={{ background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)' }}>
+            {/* Home Link */}
+            <Link
+                to="/"
+                className="fixed top-4 left-4 bg-rose-500 text-white px-4 py-2 rounded-full text-sm hover:bg-rose-600 transition shadow-lg z-50"
+            >
+                🏠 Home
+            </Link>
             {/* Return to Homepage */}
             <div className="fixed top-4 left-4 z-50">
                 <Link
@@ -243,8 +250,8 @@ function Admin() {
                             <div className="text-gray-500 text-sm">Cloudinary Photos</div>
                         </div>
                         <div className="text-center p-4 bg-pink-50 rounded-xl">
-                            <div className="text-3xl font-bold text-pink-500">{firebasePhotoCount}</div>
-                            <div className="text-gray-500 text-sm">Firebase Photos</div>
+                            <div className="text-3xl font-bold text-pink-500">{supabasePhotoCount}</div>
+                            <div className="text-gray-500 text-sm">Supabase Photos</div>
                         </div>
                         <div className="text-center p-4 bg-pink-50 rounded-xl">
                             <div className="text-3xl font-bold text-pink-500">{viewerCount}</div>

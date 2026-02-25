@@ -1,12 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import confetti from 'canvas-confetti'
 import { supabase, defaultGalleryImages, STORAGE_KEYS } from '../supabase'
 
 function Home() {
-    const [showContent, setShowContent] = useState(false)
-    const [password, setPassword] = useState('')
-    const [error, setError] = useState(false)
+    const [showContent, setShowContent] = useState(true)
     const [showGift, setShowGift] = useState(false)
     const [showGiftModal, setShowGiftModal] = useState(false)
     const [giverName, setGiverName] = useState('')
@@ -14,11 +12,13 @@ function Home() {
     const [momoNumber, setMomoNumber] = useState('')
     const [showMomoInfo, setShowMomoInfo] = useState(false)
     const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
+    const [isBirthday, setIsBirthday] = useState(false)
     const [typedText, setTypedText] = useState('')
     const [galleryImages, setGalleryImages] = useState(defaultGalleryImages)
     const [slideIndex, setSlideIndex] = useState(0)
     const [isPlaying, setIsPlaying] = useState(true)
     const [musicPlaying, setMusicPlaying] = useState(false)
+    const navigate = useNavigate()
     const audioRef = useRef(null)
 
     const letterText = `My dearest Ellen,
@@ -31,9 +31,9 @@ I love you beyond measure, beyond words, and beyond today.
 
 Always yours, 💖`
 
-    // Load Firebase photos
+    // Load Supabase photos
     useEffect(() => {
-        loadFirebasePhotos()
+        loadSupabasePhotos()
         loadMomoNumber()
         trackViews()
     }, [])
@@ -60,6 +60,8 @@ Always yours, 💖`
             }
 
             const diff = birthday - now
+            const isBirthday = diff <= 0
+            setIsBirthday(isBirthday)
             setCountdown({
                 days: Math.floor(diff / (1000 * 60 * 60 * 24)),
                 hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
@@ -91,10 +93,18 @@ Always yours, 💖`
         if (showContent) {
             createFloatingHearts()
             createStars()
+            // Auto-play music
+            if (!audioRef.current) {
+                audioRef.current = new Audio('https://res.cloudinary.com/djjgkezui/video/upload/v1770905491/Chris_Brown_-_With_You_Official_HD_Video_iqxx8x.mp3')
+                audioRef.current.loop = true
+                audioRef.current.volume = 0.3
+                audioRef.current.play().catch(e => console.log('Auto-play blocked:', e))
+                setMusicPlaying(true)
+            }
         }
     }, [showContent])
 
-    async function loadFirebasePhotos() {
+    async function loadSupabasePhotos() {
         try {
             const { data, error } = await supabase
                 .from('photos')
@@ -162,12 +172,23 @@ Always yours, 💖`
     }
 
     function revealGift() {
+        if (!isBirthday) {
+            return
+        }
         setShowGift(true)
         confetti({
             particleCount: 100,
             spread: 70,
             origin: { y: 0.6 }
         })
+    }
+
+    function goToSlideshow() {
+        navigate('/slideshow')
+    }
+
+    function goBack() {
+        navigate('/')
     }
 
     function openGiftModal() {
@@ -206,7 +227,8 @@ Always yours, 💖`
     function toggleMusic() {
         setMusicPlaying(!musicPlaying)
         if (!audioRef.current) {
-            audioRef.current = new Audio('https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3')
+            audioRef.current = new Audio('https://res.cloudinary.com/djjgkezui/video/upload/v1770905491/Chris_Brown_-_With_You_Official_HD_Video_iqxx8x.mp3')
+            audioRef.current.loop = true
         }
         if (musicPlaying) {
             audioRef.current.pause()
@@ -361,6 +383,14 @@ Always yours, 💖`
             {/* Main Content */}
             {showContent && (
                 <>
+                    {/* Back Button */}
+                    <Link
+                        to="/"
+                        className="fixed top-4 left-4 bg-white/80 hover:bg-rose-100 text-rose-500 px-4 py-2 rounded-full text-sm font-semibold shadow-lg transition z-40"
+                    >
+                        ← Back
+                    </Link>
+
                     {/* Hero Section */}
                     <section className="min-h-screen flex items-center justify-center text-center px-6 relative">
                         <div id="starsContainer" className="absolute inset-0"></div>
@@ -455,25 +485,44 @@ Always yours, 💖`
                     {/* Gift Reveal */}
                     <section className="text-center py-20 px-6 fade-in-up visible" style={{ background: 'rgba(255,255,255,0.85)' }}>
                         {!showGift ? (
-                            <button
-                                onClick={revealGift}
-                                className="btn-primary text-white px-10 py-4 rounded-full shadow-lg animate-pulse-glow text-lg font-semibold"
-                            >
-                                🎁 Tap To Open Your Surprise
-                            </button>
+                            isBirthday ? (
+                                <button
+                                    onClick={revealGift}
+                                    className="btn-primary text-white px-10 py-4 rounded-full shadow-lg animate-pulse-glow text-lg font-semibold"
+                                >
+                                    🎁 Tap To Open Your Surprise
+                                </button>
+                            ) : (
+                                <div className="bg-rose-50 p-8 rounded-2xl max-w-md mx-auto">
+                                    <div className="text-4xl mb-4">⏰</div>
+                                    <h3 className="text-2xl font-bold font-['Dancing_Script'] text-rose-500 mb-2">
+                                        Calm down, beautiful... 💕
+                                    </h3>
+                                    <p className="text-gray-600">
+                                        You will see this surprise on your birthday! 🎂<br />
+                                        <span className="text-rose-400 font-semibold">
+                                            Just {countdown.days} more days to go!
+                                        </span>
+                                    </p>
+                                </div>
+                            )
                         ) : (
                             <div className="mt-10 max-w-2xl mx-auto">
                                 <div className="text-6xl mb-6 gift-reveal show">🎉💝🎉</div>
                                 <h3 className="text-3xl font-bold font-['Dancing_Script'] gradient-text mb-4">
                                     You Are My Greatest Blessing!
                                 </h3>
-                                <p className="text-gray-600 text-lg leading-relaxed">
+                                <p className="text-gray-600 text-lg leading-relaxed mb-6">
                                     Every day with you feels like a gift. You make my life complete in ways I never thought possible.
                                     Your smile lights up my world, your laughter is my favorite melody, and your love is everything I've
                                     ever wanted.
-                                    I promise to love you forever, to cherish you always, and to make you as happy as you make me.
-                                    You deserve all the love in the universe and more! 💖✨
                                 </p>
+                                <button
+                                    onClick={goToSlideshow}
+                                    className="bg-gradient-to-r from-rose-500 to-pink-500 text-white px-8 py-3 rounded-full font-semibold shadow-lg hover:scale-105 transition-transform"
+                                >
+                                    🎬 View Slideshow 💕
+                                </button>
                             </div>
                         )}
                     </section>

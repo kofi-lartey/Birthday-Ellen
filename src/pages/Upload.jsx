@@ -171,12 +171,30 @@ function Upload() {
         setMessages(newMessages)
         localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(newMessages))
 
+        // Save to Supabase for cross-device sync
+        saveMessageToSupabase(newMessage)
+
         // Reset form
         setSenderName('')
         setMessageText('')
         setSelectedPhoto('')
 
         showNotification('Message added to slideshow! 💌')
+    }
+
+    async function saveMessageToSupabase(message) {
+        try {
+            await supabase
+                .from('photos')
+                .insert([{
+                    image_url: message.photo,
+                    name: message.name,
+                    message: message.message,
+                    created_at: message.date
+                }])
+        } catch (error) {
+            console.error('Error saving message to Supabase:', error)
+        }
     }
 
     function deleteMessage(index) {
