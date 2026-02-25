@@ -624,7 +624,7 @@ function Slideshow() {
                 // KofiLartey credit - more visible
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.8)'
                 ctx.font = 'bold 24px Poppins, sans-serif'
-                ctx.fillText('by KofiLartey', width / 2, height / 2 + 100)
+                ctx.fillText('Designed by KofiLartey', width / 2, height / 2 + 100)
             }
 
             ctx.globalAlpha = 1

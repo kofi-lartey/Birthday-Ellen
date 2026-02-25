@@ -10,6 +10,7 @@ function Upload() {
     const [messageText, setMessageText] = useState('')
     const [isUploading, setIsUploading] = useState(false)
     const [notification, setNotification] = useState('')
+
     const cloudinaryRef = useRef()
     const widgetRef = useRef()
 
@@ -43,6 +44,7 @@ function Upload() {
                 uploadPreset: cloudinaryConfig.uploadPreset,
                 sources: ['local', 'camera'],
                 maxFileSize: 5000000,
+                maxFiles: 10, // Allow multiple file uploads
                 clientAllowedFormats: ['jpg', 'jpeg', 'png', 'gif'],
                 styles: {
                     palette: {
@@ -66,11 +68,20 @@ function Upload() {
     }
 
     function handleUpload(error, result) {
-        setIsUploading(false)
-
         if (!error && result && result.event === "success") {
             addPhoto(result.info.secure_url)
-            showNotification('Photo uploaded! 📸')
+        }
+
+        // When batch upload completes
+        if (result && result.event === "batch-complete") {
+            setIsUploading(false)
+            showNotification(`${result.info.files.length} photos uploaded! 📸`)
+        }
+
+        // Handle errors
+        if (error) {
+            setIsUploading(false)
+            console.error('Upload error:', error)
         }
     }
 
@@ -85,49 +96,54 @@ function Upload() {
     }
 
     function handleFileUpload(e) {
-        const file = e.target.files[0]
-        if (!file) return
-
-        if (file.size > 5 * 1024 * 1024) {
-            alert('File too large! Max 5MB')
-            return
-        }
+        const files = e.target.files
+        if (!files || files.length === 0) return
 
         setIsUploading(true)
 
-        // Upload to Cloudinary via unsigned upload
-        const formData = new FormData()
-        formData.append('file', file)
-        formData.append('upload_preset', cloudinaryConfig.uploadPreset)
+        // Handle multiple files
+        let uploadedCount = 0
+        Array.from(files).forEach(file => {
+            if (file.size > 5 * 1024 * 1024) {
+                alert(`File ${file.name} is too large! Max 5MB`)
+                return
+            }
 
-        fetch(`https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/image/upload`, {
-            method: 'POST',
-            body: formData
+            // Upload to Cloudinary via unsigned upload
+            const formData = new FormData()
+            formData.append('file', file)
+            formData.append('upload_preset', cloudinaryConfig.uploadPreset)
+
+            fetch(`https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/image/upload`, {
+                method: 'POST',
+                body: formData
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.secure_url) {
+                        addPhoto(data.secure_url)
+                        uploadedCount++
+                        if (uploadedCount === files.length) {
+                            setIsUploading(false)
+                            showNotification(`${files.length} photos uploaded! 📸`)
+                        }
+                    }
+                })
+                .catch(err => {
+                    console.error('Upload error:', err)
+                })
         })
-            .then(res => res.json())
-            .then(data => {
-                if (data.secure_url) {
-                    addPhoto(data.secure_url)
-                    showNotification('Photo uploaded! 📸')
-                }
-            })
-            .catch(err => {
-                console.error('Upload error:', err)
-                alert('Upload failed. Please try again.')
-            })
-            .finally(() => {
-                setIsUploading(false)
-                e.target.value = ''
-            })
+
+        // Reset input
+        e.target.value = ''
     }
 
     function addPhoto(url) {
-        const newPhotos = [...uploadedPhotos, url]
-        setUploadedPhotos(newPhotos)
-        localStorage.setItem(STORAGE_KEYS.PHOTOS, JSON.stringify(newPhotos))
-
-        // Save to Supabase for cross-device sync
-        saveToSupabase(url)
+        setUploadedPhotos(prevPhotos => {
+            const newPhotos = [...prevPhotos, url]
+            localStorage.setItem(STORAGE_KEYS.PHOTOS, JSON.stringify(newPhotos))
+            return newPhotos
+        })
     }
 
     async function saveToSupabase(imageUrl) {
@@ -145,10 +161,38 @@ function Upload() {
 
     function removePhoto(index) {
         if (confirm('Remove this photo?')) {
+            const photoUrl = uploadedPhotos[index]
             const newPhotos = [...uploadedPhotos]
             newPhotos.splice(index, 1)
             setUploadedPhotos(newPhotos)
             localStorage.setItem(STORAGE_KEYS.PHOTOS, JSON.stringify(newPhotos))
+
+            // Also delete from Supabase
+            deleteFromSupabase(photoUrl)
+        }
+    }
+
+    // Delete from Supabase by image URL
+    async function deleteFromSupabase(imageUrl) {
+        try {
+            await supabase
+                .from('photos')
+                .delete()
+                .eq('image_url', imageUrl)
+        } catch (error) {
+            console.error('Error deleting from Supabase:', error)
+        }
+    }
+
+    // Clear all photos from Supabase
+    async function clearAllFromSupabase() {
+        try {
+            await supabase
+                .from('photos')
+                .delete()
+                .neq('id', 0) // Delete all rows
+        } catch (error) {
+            console.error('Error clearing Supabase:', error)
         }
     }
 
@@ -160,10 +204,14 @@ function Upload() {
             return
         }
 
+        // Use default values if not provided
+        const finalName = senderName.trim() || 'By a Love One'
+        const finalMessage = messageText.trim() || 'Happy Birthday Dear'
+
         const newMessage = {
-            name: senderName || 'Anonymous',
+            name: finalName,
             photo: selectedPhoto,
-            message: messageText,
+            message: finalMessage,
             date: new Date().toISOString()
         }
 
@@ -199,10 +247,16 @@ function Upload() {
 
     function deleteMessage(index) {
         if (confirm('Delete this message?')) {
+            const msg = messages[index]
             const newMessages = [...messages]
             newMessages.splice(index, 1)
             setMessages(newMessages)
             localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(newMessages))
+
+            // Also delete from Supabase
+            if (msg && msg.photo) {
+                deleteFromSupabase(msg.photo)
+            }
         }
     }
 
@@ -249,15 +303,16 @@ function Upload() {
                             onClick={openUploadWidget}
                         >
                             <div className="text-6xl mb-4">📤</div>
-                            <p className="text-xl text-gray-600 font-semibold">Tap to Upload Photo</p>
-                            <p className="text-gray-400 text-sm mt-2">Max 5MB • JPG, PNG, GIF</p>
+                            <p className="text-xl text-gray-600 font-semibold">Tap to Upload Photos</p>
+                            <p className="text-gray-400 text-sm mt-2">Max 5MB each • JPG, PNG, GIF • Select multiple files</p>
                         </div>
 
-                        {/* Hidden file input for fallback */}
+                        {/* Hidden file input for fallback - multiple files */}
                         <input
                             type="file"
                             id="fileInput"
                             accept="image/*"
+                            multiple
                             onChange={handleFileUpload}
                             className="hidden"
                         />

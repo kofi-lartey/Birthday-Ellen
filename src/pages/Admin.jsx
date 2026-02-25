@@ -89,12 +89,21 @@ function Admin() {
         setTimeout(() => setMomoStatus(false), 3000)
     }
 
-    function clearAllPhotos() {
+    async function clearAllPhotos() {
         if (confirm('Are you sure you want to delete all uploaded photos? This cannot be undone!')) {
+            // Clear localStorage
             localStorage.removeItem(STORAGE_KEYS.PHOTOS)
             localStorage.removeItem(STORAGE_KEYS.MESSAGES)
+
+            // Clear Supabase database
+            try {
+                await supabase.from('photos').delete().neq('id', 0)
+            } catch (error) {
+                console.error('Error clearing Supabase:', error)
+            }
+
             updateStats()
-            alert('All photos cleared!')
+            alert('All photos cleared from localStorage and database!')
         }
     }
 
