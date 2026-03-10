@@ -1,14 +1,15 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 function Locked() {
+    const navigate = useNavigate()
     const [password, setPassword] = useState('')
     const [error, setError] = useState(false)
 
     function checkPassword() {
-        if (password === 'ellen2025' || password === '1313') {
+        if (password === 'admin2025' || password === '1313') {
             // Store auth state
-            localStorage.setItem('ellenAuthenticated', 'true')
+            localStorage.setItem('adminAuthenticated', 'true')
             window.location.href = '/home'
         } else {
             setError(true)
@@ -36,10 +37,18 @@ function Locked() {
                 🔐 Admin
             </Link>
 
+            {/* Back Button */}
+            <button
+                onClick={() => navigate('/')}
+                className="fixed top-4 left-4 bg-white/80 text-rose-500 px-4 py-2 rounded-full text-sm hover:bg-rose-100 transition shadow-lg z-40"
+            >
+                ← Back
+            </button>
+
             <div className="relative z-10 max-w-md w-full mx-4">
                 <div className="text-center mb-8">
                     <div className="text-5xl mb-2 animate-pulse">💕</div>
-                    <h2 className="text-3xl font-['Dancing_Script'] text-rose-400">Happy Birthday Ellen! 🎂</h2>
+                    <h2 className="text-3xl font-['Dancing_Script'] text-rose-400">Happy Birthday! 🎂</h2>
                 </div>
 
                 <div className="space-y-4">
@@ -74,12 +83,12 @@ function Locked() {
                             <div className="text-4xl">📸</div>
                             <div>
                                 <h3 className="text-xl font-bold text-gray-700">Upload Pictures</h3>
-                                <p className="text-gray-500 text-sm">Add photos for Ellen • No login needed</p>
+                                <p className="text-gray-500 text-sm">Add photos for the birthday person • No login needed</p>
                             </div>
                         </div>
                     </Link>
 
-                    {/* Option 3: Gift Ellen */}
+                    {/* Option 3: Send a Gift */}
                     <Link
                         to="/gift"
                         className="block w-full text-left bg-gradient-to-r from-amber-100 to-yellow-100 p-6 rounded-2xl shadow-xl hover:shadow-2xl transition"
@@ -87,7 +96,7 @@ function Locked() {
                         <div className="flex items-center gap-4">
                             <div className="text-4xl">🎁</div>
                             <div>
-                                <h3 className="text-xl font-bold text-gray-700">Gift Ellen</h3>
+                                <h3 className="text-xl font-bold text-gray-700">Send a Gift</h3>
                                 <p className="text-gray-500 text-sm">Send a virtual gift • Optional name</p>
                             </div>
                         </div>

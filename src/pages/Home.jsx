@@ -21,7 +21,7 @@ function Home() {
     const navigate = useNavigate()
     const audioRef = useRef(null)
 
-    const letterText = `My dearest Ellen,
+    const letterText = `My dearest love,
 
 They say time flies, but with you, it feels like every moment is worth savoring. Reflecting on another year together, I realized that you aren't just a part of my life—you are the heartbeat of it.
 
@@ -106,17 +106,20 @@ Always yours, 💖`
 
     async function loadSupabasePhotos() {
         try {
+            // Load photos for the main birthday page
             const { data, error } = await supabase
                 .from('photos')
                 .select('image_url')
-                .order('created_at', { ascending: false })
+                .or('tag.eq.gallery,tag.is.null')
 
             if (data && data.length > 0) {
                 const urls = data.map(p => p.image_url)
                 setGalleryImages(prev => [...urls, ...defaultGalleryImages])
+            } else if (error) {
+                console.log('Supabase photos query error:', error.message)
             }
         } catch (err) {
-            console.error('Error loading photos:', err)
+            console.log('Supabase not available, using default images')
         }
     }
 
@@ -162,7 +165,7 @@ Always yours, 💖`
     }
 
     function checkPassword() {
-        if (password === 'ellen2025' || password === '1313') {
+        if (password === 'admin2025' || password === '1313') {
             setShowContent(true)
             setError(false)
         } else {
@@ -268,14 +271,14 @@ Always yours, 💖`
                             to="/admin"
                             className="bg-rose-500 text-white px-4 py-2 rounded-full text-sm hover:bg-rose-600 transition shadow-lg"
                         >
-                            🔐 Admin (Ellen)
+                            🔐 Admin
                         </Link>
                     </div>
 
                     <div className="max-w-md w-full">
                         <div className="text-center mb-8">
                             <div className="text-5xl mb-2 animate-pulse">💕</div>
-                            <h2 className="text-3xl font-['Dancing_Script'] text-rose-400">Happy Birthday Ellen! 🎂</h2>
+                            <h2 className="text-3xl font-['Dancing_Script'] text-rose-400">Happy Birthday! 🎂</h2>
                         </div>
 
                         <div className="space-y-4">
@@ -310,12 +313,12 @@ Always yours, 💖`
                                     <div className="text-4xl">📸</div>
                                     <div>
                                         <h3 className="text-xl font-bold text-gray-700">Upload Pictures</h3>
-                                        <p className="text-gray-500 text-sm">Add photos for Ellen • No login needed</p>
+                                        <p className="text-gray-500 text-sm">Add photos for the birthday person • No login needed</p>
                                     </div>
                                 </div>
                             </Link>
 
-                            {/* Option 3: Gift Ellen */}
+                            {/* Option 3: Send a Gift */}
                             <button
                                 onClick={openGiftModal}
                                 className="block w-full text-left bg-gradient-to-r from-amber-100 to-yellow-100 p-6 rounded-2xl shadow-xl hover:shadow-2xl transition"
@@ -323,7 +326,7 @@ Always yours, 💖`
                                 <div className="flex items-center gap-4">
                                     <div className="text-4xl">🎁</div>
                                     <div>
-                                        <h3 className="text-xl font-bold text-gray-700">Gift Ellen</h3>
+                                        <h3 className="text-xl font-bold text-gray-700">Send a Gift</h3>
                                         <p className="text-gray-500 text-sm">Send a virtual gift • Optional name</p>
                                     </div>
                                 </div>
@@ -337,7 +340,7 @@ Always yours, 💖`
             {showGiftModal && (
                 <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
                     <div className="bg-white p-8 rounded-3xl max-w-sm w-full mx-4">
-                        <h3 className="text-2xl font-bold text-gray-700 mb-4 text-center font-['Dancing_Script']">🎁 Gift for Ellen</h3>
+                        <h3 className="text-2xl font-bold text-gray-700 mb-4 text-center font-['Dancing_Script']">🎁 Send a Gift</h3>
                         <input
                             type="text"
                             value={giverName}

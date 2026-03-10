@@ -13,8 +13,8 @@ export const cloudinaryConfig = {
 
 // Admin credentials
 export const ADMIN_CREDENTIALS = {
-    username: 'ellen',
-    password: 'ellen2025'
+    username: 'admin',
+    password: 'admin2025'
 }
 
 // Birthday date
@@ -40,10 +40,16 @@ export const defaultGalleryImages = [
 
 // Local storage keys
 export const STORAGE_KEYS = {
-    PHOTOS: 'ellenPhotos',
-    MESSAGES: 'ellenMessages',
-    GIFTS: 'ellenGifts',
-    MOM0: 'ellenMomoNumber',
-    VIEWS: 'ellenViews',
-    ADMIN_LOGGED_IN: 'ellenAdminLoggedIn'
+    PHOTOS: 'birthdayPhotos',
+    MESSAGES: 'birthdayMessages',
+    GIFTS: 'birthdayGifts',
+    MOM0: 'birthdayMomoNumber',
+    VIEWS: 'birthdayViews',
+    ADMIN_LOGGED_IN: 'adminLoggedIn',
+    // New keys for orders
+    ORDERS: 'birthdayOrders',
+    CURRENT_ORDER: 'currentOrderCode',
+    // User authentication
+    USERS: 'birthdayUsers',
+    CURRENT_USER: 'currentUser'
 }

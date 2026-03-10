@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
-import { supabase, cloudinaryConfig, STORAGE_KEYS } from '../supabase'
+import { Link, useParams } from 'react-router-dom'
+import { supabase, STORAGE_KEYS } from '../supabase'
 
-function Upload() {
-    const navigate = useNavigate()
-    const { code } = useParams() // Get order code from URL if shared link
+function OrderUpload() {
+    const { code } = useParams()
     const [uploadedPhotos, setUploadedPhotos] = useState([])
     const [messages, setMessages] = useState([])
     const [senderName, setSenderName] = useState('')
@@ -12,28 +11,20 @@ function Upload() {
     const [messageText, setMessageText] = useState('')
     const [isUploading, setIsUploading] = useState(false)
     const [notification, setNotification] = useState('')
-    const [shareLink, setShareLink] = useState('')
-    const [orderCode, setOrderCode] = useState(code || '')
+    const [orderConfig, setOrderConfig] = useState(null)
 
     const cloudinaryRef = useRef()
     const widgetRef = useRef()
 
     useEffect(() => {
-        // If there's a code in URL, load photos/messages for that specific order ONLY
-        if (code) {
-            setOrderCode(code)
-            const orderPhotos = JSON.parse(localStorage.getItem(`${STORAGE_KEYS.PHOTOS}_${code}`) || '[]')
-            const orderMessages = JSON.parse(localStorage.getItem(`${STORAGE_KEYS.MESSAGES}_${code}`) || '[]')
-            setUploadedPhotos(orderPhotos)
-            setMessages(orderMessages)
-        } else {
-            // Load from general localStorage (for dashboard uploads)
-            const photos = JSON.parse(localStorage.getItem(STORAGE_KEYS.PHOTOS) || '[]')
-            setUploadedPhotos(photos)
+        loadOrderConfig()
 
-            const msgs = JSON.parse(localStorage.getItem(STORAGE_KEYS.MESSAGES) || '[]')
-            setMessages(msgs)
-        }
+        // Load from localStorage for this specific order
+        const photos = JSON.parse(localStorage.getItem(`${STORAGE_KEYS.PHOTOS}_${code}`) || '[]')
+        setUploadedPhotos(photos)
+
+        const msgs = JSON.parse(localStorage.getItem(`${STORAGE_KEYS.MESSAGES}_${code}`) || '[]')
+        setMessages(msgs)
 
         // Load Cloudinary widget script
         const script = document.createElement('script')
@@ -48,30 +39,31 @@ function Upload() {
         }
     }, [code])
 
-    // Generate shareable link function
-    function generateShareLink() {
-        // Get current order code from localStorage
+    async function loadOrderConfig() {
+        // Check localStorage first
         const orders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]')
-        const currentUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER) || 'null')
-        
-        // Find the latest order for this user
-        let latestOrder = null
-        if (currentUser) {
-            latestOrder = orders.find(o => o.userId === currentUser.id)
-        }
-        
-        // If no order found, try to get from dashboard selected order
-        if (!latestOrder && orders.length > 0) {
-            latestOrder = orders[orders.length - 1] // Get most recent
+        const localOrder = orders.find(o => o.code.toLowerCase() === code?.toLowerCase())
+
+        if (localOrder) {
+            setOrderConfig(localOrder)
+            return
         }
 
-        if (latestOrder && latestOrder.code) {
-            const link = `${window.location.origin}/upload/${latestOrder.code}`
-            setShareLink(link)
-            navigator.clipboard.writeText(link)
-            showNotification('Link copied to clipboard! 🔗')
-        } else {
-            showNotification('No order found. Please create an order first.')
+        // Check Supabase
+        try {
+            const { data, error } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('code', code)
+                .limit(1);
+
+            if (data && data.length > 0) {
+                setOrderConfig(data[0]);
+            } else if (error) {
+                console.log('Supabase orders table not available');
+            }
+        } catch (err) {
+            console.log('Supabase not available');
         }
     }
 
@@ -80,29 +72,12 @@ function Upload() {
             cloudinaryRef.current = window.cloudinary
 
             widgetRef.current = window.cloudinary.createUploadWidget({
-                cloudName: cloudinaryConfig.cloudName,
-                uploadPreset: cloudinaryConfig.uploadPreset,
+                cloudName: 'djjgkezui',
+                uploadPreset: 'ml_default',
                 sources: ['local', 'camera'],
                 maxFileSize: 5000000,
-                maxFiles: 10, // Allow multiple file uploads
-                clientAllowedFormats: ['jpg', 'jpeg', 'png', 'gif'],
-                styles: {
-                    palette: {
-                        window: "#FFFFFF",
-                        windowBorder: "#F472B6",
-                        tabIcon: "#EC4899",
-                        menuIcons: "#F472B6",
-                        textDark: "#333333",
-                        textLight: "#FFFFFF",
-                        link: "#EC4899",
-                        action: "#EC4899",
-                        inactiveTabIcon: "#9CA3AF",
-                        error: "#EF4444",
-                        inProgress: "#EC4899",
-                        complete: "#10B981",
-                        sourceBg: "#F3F4F6"
-                    }
-                }
+                maxFiles: 10,
+                clientAllowedFormats: ['jpg', 'jpeg', 'png', 'gif']
             }, handleUpload)
         }
     }
@@ -112,13 +87,11 @@ function Upload() {
             addPhoto(result.info.secure_url)
         }
 
-        // When batch upload completes
         if (result && result.event === "batch-complete") {
             setIsUploading(false)
             showNotification(`${result.info.files.length} photos uploaded! 📸`)
         }
 
-        // Handle errors
         if (error) {
             setIsUploading(false)
             console.error('Upload error:', error)
@@ -130,7 +103,6 @@ function Upload() {
         if (widgetRef.current) {
             widgetRef.current.open()
         } else {
-            // Fallback: trigger file input
             document.getElementById('fileInput').click()
         }
     }
@@ -141,7 +113,6 @@ function Upload() {
 
         setIsUploading(true)
 
-        // Handle multiple files
         let uploadedCount = 0
         Array.from(files).forEach(file => {
             if (file.size > 5 * 1024 * 1024) {
@@ -149,12 +120,11 @@ function Upload() {
                 return
             }
 
-            // Upload to Cloudinary via unsigned upload
             const formData = new FormData()
             formData.append('file', file)
-            formData.append('upload_preset', cloudinaryConfig.uploadPreset)
+            formData.append('upload_preset', 'ml_default')
 
-            fetch(`https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/image/upload`, {
+            fetch('https://api.cloudinary.com/v1_1/djjgkezui/image/upload', {
                 method: 'POST',
                 body: formData
             })
@@ -174,33 +144,26 @@ function Upload() {
                 })
         })
 
-        // Reset input
         e.target.value = ''
     }
 
     function addPhoto(url) {
-        // Tag photos as 'gallery' for birthday page photos
-        // Use 'slideshow' for message photos
+        // Tag as 'gallery' for order-specific photos
         const tag = 'gallery'
+
         const photoWithTag = { url, tag }
 
         setUploadedPhotos(prevPhotos => {
             const newPhotos = [...prevPhotos, photoWithTag]
-            // Save to general storage ONLY (not Supabase yet)
-            localStorage.setItem(STORAGE_KEYS.PHOTOS, JSON.stringify(newPhotos))
-            
-            // If there's an order code, also save to order-specific storage
-            if (orderCode) {
-                localStorage.setItem(`${STORAGE_KEYS.PHOTOS}_${orderCode}`, JSON.stringify(newPhotos))
-            }
+            localStorage.setItem(`${STORAGE_KEYS.PHOTOS}_${code}`, JSON.stringify(newPhotos))
             return newPhotos
         })
-        
-        // DON'T save to Supabase yet - wait for message submission
+
+        // Save to Supabase with tag
+        saveToSupabase(url, tag)
     }
 
     // Save to Supabase with tag for tracking
-    // Tag: 'slideshow' for slideshow messages, 'gallery' for birthday page photos
     async function saveToSupabase(imageUrl, tag) {
         try {
             const { data, error } = await supabase
@@ -208,13 +171,13 @@ function Upload() {
                 .insert([{
                     order_code: code,
                     image_url: imageUrl,
-                    tag: tag, // 'slideshow' or 'gallery'
+                    tag: tag,
                     created_at: new Date().toISOString()
                 }])
             if (error) {
                 console.log('Supabase save error:', error.message)
             } else {
-                console.log('Photo saved to Supabase with tag:', tag)
+                console.log('Photo saved to Supabase!')
             }
         } catch (error) {
             console.error('Error saving to Supabase:', error)
@@ -223,43 +186,10 @@ function Upload() {
 
     function removePhoto(index) {
         if (confirm('Remove this photo?')) {
-            const photo = uploadedPhotos[index]
-            const photoUrl = photo.url // Handle object format
             const newPhotos = [...uploadedPhotos]
             newPhotos.splice(index, 1)
             setUploadedPhotos(newPhotos)
-            
-            // Save to general storage
-            localStorage.setItem(STORAGE_KEYS.PHOTOS, JSON.stringify(newPhotos))
-            
-            // Also save to order-specific storage
-            if (orderCode) {
-                localStorage.setItem(`${STORAGE_KEYS.PHOTOS}_${orderCode}`, JSON.stringify(newPhotos))
-            }
-        }
-    }
-
-    // Delete from Supabase by image URL
-    async function deleteFromSupabase(imageUrl) {
-        try {
-            await supabase
-                .from('photos')
-                .delete()
-                .eq('image_url', imageUrl)
-        } catch (error) {
-            console.error('Error deleting from Supabase:', error)
-        }
-    }
-
-    // Clear all photos from Supabase
-    async function clearAllFromSupabase() {
-        try {
-            await supabase
-                .from('photos')
-                .delete()
-                .neq('id', 0) // Delete all rows
-        } catch (error) {
-            console.error('Error clearing Supabase:', error)
+            localStorage.setItem(`${STORAGE_KEYS.PHOTOS}_${code}`, JSON.stringify(newPhotos))
         }
     }
 
@@ -271,7 +201,6 @@ function Upload() {
             return
         }
 
-        // Use default values if not provided
         const finalName = senderName.trim() || 'By a Love One'
         const finalMessage = messageText.trim() || 'Happy Birthday Dear'
 
@@ -284,17 +213,7 @@ function Upload() {
 
         const newMessages = [...messages, newMessage]
         setMessages(newMessages)
-        
-        // Save to general storage
-        localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(newMessages))
-        
-        // If there's an order code, also save to order-specific storage
-        if (orderCode) {
-            localStorage.setItem(`${STORAGE_KEYS.MESSAGES}_${orderCode}`, JSON.stringify(newMessages))
-        }
-
-        // Save to Supabase for cross-device sync
-        saveMessageToSupabase(newMessage)
+        localStorage.setItem(`${STORAGE_KEYS.MESSAGES}_${code}`, JSON.stringify(newMessages))
 
         // Reset form
         setSenderName('')
@@ -304,40 +223,12 @@ function Upload() {
         showNotification('Message added to slideshow! 💌')
     }
 
-    async function saveMessageToSupabase(message) {
-        try {
-            const { data, error } = await supabase
-                .from('photos')
-                .insert([{
-                    order_code: orderCode || code,
-                    image_url: message.photo,
-                    name: message.name,
-                    message: message.message,
-                    tag: 'slideshow',
-                    created_at: message.date
-                }])
-            if (error) {
-                console.log('Supabase save error:', error.message)
-            } else {
-                console.log('Message saved to Supabase with photo and details!')
-            }
-        } catch (error) {
-            console.error('Error saving message to Supabase:', error)
-        }
-    }
-
     function deleteMessage(index) {
         if (confirm('Delete this message?')) {
-            const msg = messages[index]
             const newMessages = [...messages]
             newMessages.splice(index, 1)
             setMessages(newMessages)
-            localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(newMessages))
-
-            // Also delete from Supabase
-            if (msg && msg.photo) {
-                deleteFromSupabase(msg.photo)
-            }
+            localStorage.setItem(`${STORAGE_KEYS.MESSAGES}_${code}`, JSON.stringify(newMessages))
         }
     }
 
@@ -346,30 +237,19 @@ function Upload() {
         setTimeout(() => setNotification(''), 3000)
     }
 
+    const recipientName = orderConfig?.recipient_name || 'the birthday person'
+
     return (
         <div className="p-4 md:p-6 min-h-screen" style={{ background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)' }}>
-            {/* Back Button */}
-            <button
-                onClick={() => navigate('/dashboard')}
-                className="fixed top-4 left-4 bg-white/80 text-rose-500 px-4 py-2 rounded-full text-sm hover:bg-rose-100 transition shadow-lg z-40"
-            >
-                ← Dashboard
-            </button>
-
-            {/* Generate Link Button */}
-            <button
-                onClick={generateShareLink}
-                className="fixed top-4 right-4 bg-gradient-to-r from-rose-500 to-pink-500 text-white px-4 py-2 rounded-full text-sm hover:shadow-lg transition z-40"
-            >
-                🔗 Generate Link
-            </button>
-
-            {/* Share Link Display */}
-            {shareLink && (
-                <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-white px-4 py-2 rounded-full shadow-lg z-50">
-                    <p className="text-sm text-gray-600">Link copied! Share: <span className="text-rose-500">{shareLink}</span></p>
-                </div>
-            )}
+            {/* Return to Homepage */}
+            <div className="fixed top-4 left-4 z-50">
+                <Link
+                    to={`/birthday/${code}`}
+                    className="bg-rose-500 text-white px-4 py-2 rounded-full text-sm hover:bg-rose-600 transition shadow-lg"
+                >
+                    ← Birthday Page
+                </Link>
+            </div>
 
             {/* Notification */}
             {notification && (
@@ -382,8 +262,11 @@ function Upload() {
                 {/* Header */}
                 <div className="text-center mb-8 pt-8">
                     <div className="text-6xl mb-4 animate-float">🎂</div>
-                    <h1 className="text-4xl md:text-5xl font-['Dancing_Script'] text-rose-500 mb-4">Share Your Love!</h1>
+                    <h1 className="text-4xl md:text-5xl font-['Dancing_Script'] text-rose-500 mb-4">
+                        Add Photos for {recipientName}!
+                    </h1>
                     <p className="text-gray-600 text-lg">Upload a photo and add a sweet message 💕</p>
+                    <p className="text-rose-500 font-semibold mt-2">Code: {code}</p>
                 </div>
 
                 {/* Two Column Layout */}
@@ -398,10 +281,9 @@ function Upload() {
                         >
                             <div className="text-6xl mb-4">📤</div>
                             <p className="text-xl text-gray-600 font-semibold">Tap to Upload Photos</p>
-                            <p className="text-gray-400 text-sm mt-2">Max 5MB each • JPG, PNG, GIF • Select multiple files</p>
+                            <p className="text-gray-400 text-sm mt-2">Max 5MB each • JPG, PNG, GIF</p>
                         </div>
 
-                        {/* Hidden file input for fallback - multiple files */}
                         <input
                             type="file"
                             id="fileInput"
@@ -411,7 +293,6 @@ function Upload() {
                             className="hidden"
                         />
 
-                        {/* Upload Progress */}
                         {isUploading && (
                             <div className="mt-6">
                                 <div className="flex items-center justify-center space-x-3">
@@ -430,13 +311,12 @@ function Upload() {
                                         <p>No photos yet</p>
                                     </div>
                                 ) : (
-                                    uploadedPhotos.map((photo, index) => (
+                                    uploadedPhotos.map((url, index) => (
                                         <div key={index} className="photo-card relative fade-in">
                                             <img
-                                                src={photo.url}
+                                                src={url}
                                                 alt={`Photo ${index + 1}`}
                                                 className="w-full h-24 object-cover rounded-xl shadow-md"
-                                                onError={(e) => { e.target.style.display = 'none' }}
                                             />
                                             <button
                                                 onClick={() => removePhoto(index)}
@@ -476,14 +356,14 @@ function Upload() {
                                     className="w-full p-3 border-2 border-rose-200 rounded-xl focus:outline-none focus:border-rose-400"
                                 >
                                     <option value="">Select a photo you uploaded</option>
-                                    {uploadedPhotos.map((photo, index) => (
-                                        <option key={index} value={photo.url}>Photo {index + 1}</option>
+                                    {uploadedPhotos.map((url, index) => (
+                                        <option key={index} value={url}>Photo {index + 1}</option>
                                     ))}
                                 </select>
                             </div>
 
                             <div className="mb-4">
-                                <label className="block text-gray-600 mb-2 font-semibold">Sweet Message *</label>
+                                <label className="block text-gray-600 mb-2 font-semibold">Sweet Message for {recipientName} *</label>
                                 <textarea
                                     value={messageText}
                                     onChange={(e) => setMessageText(e.target.value)}
@@ -534,7 +414,7 @@ function Upload() {
                     </div>
                 </div>
 
-                {/* Slideshow Preview */}
+                {/* Preview */}
                 <div className="mt-8">
                     <h2 className="text-2xl font-bold text-gray-700 mb-4 text-center">🎬 Slideshow Preview</h2>
                     <div className="bg-black rounded-2xl overflow-hidden relative" style={{ height: '300px' }}>
@@ -560,16 +440,17 @@ function Upload() {
                             </div>
                         )}
                     </div>
-                    <p className="text-center text-gray-500 mt-2 text-sm">This is what they will see on their birthday page</p>
+                    <p className="text-center text-gray-500 mt-2 text-sm">This is what {recipientName} will see on their birthday page</p>
                 </div>
 
                 {/* Footer */}
                 <div className="text-center mt-8 text-gray-500 pb-8">
-                    <p>Made with ❤️ for this special day</p>
+                    <p>Made with ❤️ for {recipientName}'s special day</p>
+                    <p className="text-sm mt-2">Code: {code}</p>
                 </div>
             </div>
         </div>
     )
 }
 
-export default Upload
+export default OrderUpload

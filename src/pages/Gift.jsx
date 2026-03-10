@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import confetti from 'canvas-confetti'
 import { STORAGE_KEYS } from '../supabase'
 
 function Gift() {
+    const { code } = useParams()
     const navigate = useNavigate()
     const [giverName, setGiverName] = useState('')
     const [giftMessage, setGiftMessage] = useState('')
@@ -21,13 +22,15 @@ function Gift() {
     }, [])
 
     function sendGift() {
-        const gifts = JSON.parse(localStorage.getItem(STORAGE_KEYS.GIFTS) || '[]')
+        // Use code-specific key if available, otherwise use default key
+        const storageKey = code ? `${STORAGE_KEYS.GIFTS}_${code.toUpperCase()}` : STORAGE_KEYS.GIFTS
+        const gifts = JSON.parse(localStorage.getItem(storageKey) || '[]')
         gifts.push({
             name: giverName || 'Anonymous',
             message: giftMessage,
             date: new Date().toISOString()
         })
-        localStorage.setItem(STORAGE_KEYS.GIFTS, JSON.stringify(gifts))
+        localStorage.setItem(storageKey, JSON.stringify(gifts))
 
         confetti({
             particleCount: 100,
@@ -52,7 +55,7 @@ function Gift() {
                 <div className="text-center">
                     <div className="text-6xl mb-4">🎉💝🎉</div>
                     <h2 className="text-3xl font-['Dancing_Script'] text-rose-500">Gift Sent!</h2>
-                    <p className="text-gray-600 mt-2">Ellen will see your love 💕</p>
+                    <p className="text-gray-600 mt-2">They will see your love 💕</p>
                 </div>
             </div>
         )
@@ -80,7 +83,7 @@ function Gift() {
 
             <div className="relative z-10 bg-white p-8 rounded-3xl max-w-sm w-full mx-4">
                 <h3 className="text-2xl font-bold text-gray-700 mb-4 text-center font-['Dancing_Script']">
-                    🎁 Gift for Ellen
+                    🎁 Send a Gift
                 </h3>
 
                 <input

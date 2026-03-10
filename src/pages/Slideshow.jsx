@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { supabase, STORAGE_KEYS } from '../supabase'
 
 function Slideshow() {
+    const { code } = useParams()
     const [slides, setSlides] = useState([])
     const [currentIndex, setCurrentIndex] = useState(0)
     const [isPlaying, setIsPlaying] = useState(true)
@@ -12,12 +13,102 @@ function Slideshow() {
     const [isRecording, setIsRecording] = useState(false)
     const [recordingProgress, setRecordingProgress] = useState(0)
     const [musicPlaying, setMusicPlaying] = useState(false)
+    const [orderConfig, setOrderConfig] = useState(null)
     const intervalRef = useRef(null)
     const progressRef = useRef(null)
     const musicRef = useRef(null)
 
+    // Load order config if code exists
     useEffect(() => {
-        loadSlides()
+        if (code) {
+            loadOrderConfig()
+            loadOrderSlides()
+        }
+    }, [code])
+
+    async function loadOrderConfig() {
+        // Check localStorage first
+        const orders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]')
+        const localOrder = orders.find(o => o.code.toLowerCase() === code?.toLowerCase())
+
+        if (localOrder) {
+            setOrderConfig(localOrder)
+            return
+        }
+
+        // Check Supabase
+        try {
+            const { data, error } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('code', code)
+                .limit(1);
+
+            if (data && data.length > 0) {
+                setOrderConfig(data[0]);
+            } else if (error) {
+                console.log('Supabase orders table not available');
+            }
+        } catch (err) {
+            console.log('Supabase not available');
+        }
+    }
+
+    function loadOrderSlides() {
+        // First try to load from Supabase
+        loadFromSupabase()
+        
+        // Also load from localStorage as backup
+        const messages = JSON.parse(localStorage.getItem(`${STORAGE_KEYS.MESSAGES}_${code}`) || '[]')
+        const photos = JSON.parse(localStorage.getItem(`${STORAGE_KEYS.PHOTOS}_${code}`) || '[]')
+
+        const allSlides = [
+            ...messages.map(msg => ({
+                name: msg.name,
+                message: msg.message,
+                photo: msg.photo
+            })),
+            ...photos.map(photoUrl => ({
+                name: 'From the Cloud',
+                message: 'A special memory shared with love',
+                photo: photoUrl
+            }))
+        ]
+
+        if (allSlides.length > 0) {
+            setSlides(allSlides)
+        }
+    }
+
+    // Load slides from Supabase
+    async function loadFromSupabase() {
+        try {
+            const { data, error } = await supabase
+                .from('photos')
+                .select('*')
+                .eq('order_code', code)
+                .eq('tag', 'slideshow')
+                .order('created_at', { ascending: true })
+
+            if (data && data.length > 0) {
+                const supabaseSlides = data.map(photo => ({
+                    name: photo.name || 'From the Cloud',
+                    message: photo.message || 'A special memory shared with love',
+                    photo: photo.image_url
+                }))
+                
+                console.log('Loaded slides from Supabase:', supabaseSlides.length)
+                setSlides(supabaseSlides)
+            }
+        } catch (err) {
+            console.log('Error loading from Supabase:', err)
+        }
+    }
+
+    useEffect(() => {
+        if (!code) {
+            loadSlides()
+        }
         createHearts()
 
         // Show title briefly then hide
@@ -81,16 +172,22 @@ function Slideshow() {
     }
 
     async function loadSlides() {
-        // Load from Supabase first (photos table with name and message)
+        // If we have order code, load from order-specific storage
+        if (code) {
+            loadOrderSlides()
+            return
+        }
+
+        // Load from Supabase - filter by 'slideshow' tag for messages
         try {
             const { data, error } = await supabase
                 .from('photos')
                 .select('*')
-                .order('created_at', { ascending: true })
+                .eq('tag', 'slideshow')
 
             if (data && data.length > 0) {
                 const slidesFromSupabase = data.map((photo) => ({
-                    name: photo.name || '☁️ From The Cloud',
+                    name: photo.name || 'From The Cloud',
                     message: photo.message || 'A special memory shared with love',
                     photo: photo.image_url
                 }))
@@ -104,8 +201,8 @@ function Slideshow() {
         // Fallback: Load from localStorage
         const messages = JSON.parse(localStorage.getItem(STORAGE_KEYS.MESSAGES) || '[]')
 
-        // Also get Firebase photos
-        const firebasePhotos = JSON.parse(localStorage.getItem('ellenFirebasePhotos') || '[]')
+        // Also get stored photos
+        const firebasePhotos = JSON.parse(localStorage.getItem('birthdayPhotos') || '[]')
 
         // Combine messages and firebase photos
         const allSlides = [
@@ -126,6 +223,8 @@ function Slideshow() {
         }
     }
 
+    const recipientName = orderConfig?.recipient_name || orderConfig?.nickname || 'Birthday Star'
+
     function nextSlide() {
         setCurrentIndex(prev => (prev + 1) % slides.length)
     }
@@ -141,16 +240,19 @@ function Slideshow() {
     function toggleMusic() {
         // Create audio if not exists
         if (!musicRef.current) {
-            musicRef.current = new Audio('https://res.cloudinary.com/djjgkezui/video/upload/v1770985151/Samini_-_My_Own_Lyrics_Video_mcxjre.mp3')
-            musicRef.current.loop = true
-            musicRef.current.volume = 0.3
+            const musicUrl = orderConfig?.audio_url || ''
+            if (musicUrl) {
+                musicRef.current = new Audio(musicUrl)
+                musicRef.current.loop = true
+                musicRef.current.volume = 0.3
+            }
         }
 
         if (musicPlaying) {
-            musicRef.current.pause()
+            musicRef.current?.pause()
             setMusicPlaying(false)
         } else {
-            musicRef.current.play().then(() => {
+            musicRef.current?.play().then(() => {
                 setMusicPlaying(true)
             }).catch((error) => {
                 console.log('Music play error:', error)
@@ -266,7 +368,7 @@ function Slideshow() {
             if (!blob) { alert("Download failed."); return }
             const link = document.createElement("a")
             link.href = URL.createObjectURL(blob)
-            link.download = `ellen-birthday-${currentIndex + 1}.jpg`
+            link.download = code ? `birthday-${code}.jpg` : `birthday-${currentIndex + 1}.jpg`
             link.click()
         }, "image/jpeg", 0.95)
     }
@@ -362,7 +464,7 @@ function Slideshow() {
 
             const a = document.createElement("a")
             a.href = url
-            a.download = mimeType.includes('mp4') ? "ellen-birthday-slideshow.mp4" : "ellen-birthday-whatsapp.webm"
+            a.download = code ? `birthday-slideshow-${code}.mp4` : "birthday-slideshow.mp4"
             a.click()
 
             setIsRecording(false)
@@ -458,7 +560,7 @@ function Slideshow() {
             ctx.fillText('Happy Birthday', 0, 0)
 
             ctx.font = 'bold 75px Playfair Display, serif'
-            ctx.fillText('Ellen 🎂', 0, 75)
+            ctx.fillText(`${recipientName} 🎂`, 0, 75)
 
             ctx.restore()
 
@@ -619,7 +721,7 @@ function Slideshow() {
 
                 ctx.fillStyle = '#ffffff'
                 ctx.font = '28px Poppins, sans-serif'
-                ctx.fillText('❤️ Happy Birthday Ellen 🎂', width / 2, height / 2 + 40)
+                ctx.fillText('❤️ Happy Birthday! 🎂', width / 2, height / 2 + 40)
 
                 // KofiLartey credit - more visible
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.8)'
@@ -742,7 +844,7 @@ function Slideshow() {
     function shareToWhatsApp() {
         const currentSlide = slides[currentIndex]
         if (currentSlide) {
-            const message = encodeURIComponent(`"${currentSlide.message}"\n\n- ${currentSlide.name}\n\n🎂 Happy Birthday Ellen! 💕`)
+            const message = encodeURIComponent(`"${currentSlide.message}"\n\n- ${currentSlide.name}\n\n🎂 Happy Birthday! 💕`)
             window.open(`https://wa.me/?text=${message}`, '_blank')
         }
     }
@@ -821,7 +923,7 @@ function Slideshow() {
 
             {/* Title Overlay */}
             <div className={`title-overlay ${showTitle ? 'show' : ''}`}>
-                <h1 className="romantic-font">Happy Birthday Ellen! 🎂</h1>
+                <h1 className="romantic-font">Happy Birthday, {recipientName}! 🎂</h1>
                 <p>With love from your friends & family 💕</p>
             </div>
 
