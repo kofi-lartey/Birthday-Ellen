@@ -18,21 +18,54 @@ function Order() {
     const [isProcessing, setIsProcessing] = useState(false)
     const [existingCode, setExistingCode] = useState('')
     const [user, setUser] = useState(null)
+    const [currency, setCurrency] = useState('GHS') // GHS = Cedis, USD = Dollars
 
     // Load user from localStorage on mount
     useEffect(() => {
         const currentUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER) || 'null')
         if (currentUser) {
             setUser(currentUser)
+            // Pre-fill giver name and phone from logged-in user
+            if (currentUser.name) {
+                setGiverName(currentUser.name)
+            }
+            if (currentUser.phone) {
+                setGiverPhone(currentUser.phone)
+            }
         }
     }, [])
 
-    // Packages
+    // Pricing in both currencies
+    const prices = {
+        GHS: {
+            free: 0,
+            basic: 15,
+            premium: 30,
+            unlimited: 100
+        },
+        USD: {
+            free: 0,
+            basic: 1,
+            premium: 2,
+            unlimited: 10
+        }
+    }
+
+    const formatPrice = (priceId) => {
+        if (priceId === 'free') return currency === 'GHS' ? 'FREE' : 'FREE'
+        const price = prices[currency][priceId]
+        return currency === 'GHS' ? `₵${price}` : `${price}`
+    }
+
+    // Packages with limits
     const packages = [
         {
             id: 'free',
             name: 'Free Package',
-            price: 'FREE',
+            price: formatPrice('free'),
+            priceId: 'free',
+            orders: 1,
+            photosPerUpload: 5,
             features: [
                 '🎂 Personalized birthday page',
                 '📸 Photo gallery (up to 5 photos)',
@@ -44,7 +77,10 @@ function Order() {
         {
             id: 'basic',
             name: 'Basic Package',
-            price: '₵5',
+            price: formatPrice('basic'),
+            priceId: 'basic',
+            orders: 3,
+            photosPerUpload: 10,
             features: [
                 '🎂 Personalized birthday page',
                 '📸 Photo gallery slideshow',
@@ -56,7 +92,10 @@ function Order() {
         {
             id: 'premium',
             name: 'Premium Package',
-            price: '₵10',
+            price: formatPrice('premium'),
+            priceId: 'premium',
+            orders: 10,
+            photosPerUpload: 15,
             popular: true,
             features: [
                 '🎂 Everything in Basic',
@@ -64,6 +103,24 @@ function Order() {
                 '🎁 Gift collection feature',
                 '💰 View statistics',
                 '✉️ Share link for friends'
+            ]
+        },
+        {
+            id: 'unlimited',
+            name: 'Unlimited Subscription',
+            price: formatPrice('unlimited'),
+            priceId: 'unlimited',
+            orders: -1, // -1 means unlimited
+            photosPerUpload: -1, // -1 means unlimited
+            popular: false,
+            features: [
+                '🎂 Unlimited birthday pages',
+                '📸 Unlimited photo uploads',
+                '🎬 Video slideshow download',
+                '🎁 Gift collection feature',
+                '💰 View statistics',
+                '✉️ Share links for friends',
+                '⭐ Priority support'
             ]
         }
     ]
@@ -86,6 +143,39 @@ function Order() {
             }
         } catch (err) {
             console.log('Using default momo')
+        }
+    }
+
+    // Get package limits
+    function getPackageLimits(packageId) {
+        const pkg = packages.find(p => p.id === packageId)
+        return pkg || { orders: 1, photosPerUpload: 5 }
+    }
+
+    // Check user's order count and package limit
+    async function checkOrderLimit(packageId) {
+        if (!user) return { allowed: true, current: 0, limit: 1 }
+        
+        const limits = getPackageLimits(packageId)
+        
+        // Get user's orders from Supabase
+        try {
+            const { data } = await supabase
+                .from('orders')
+                .select('id')
+                .eq('user_id', user.id)
+            
+            const currentOrders = data?.length || 0
+            
+            // If unlimited package (-1), always allowed
+            if (limits.orders === -1) {
+                return { allowed: true, current: currentOrders, limit: 'Unlimited' }
+            }
+            
+            const allowed = currentOrders < limits.orders
+            return { allowed, current: currentOrders, limit: limits.orders }
+        } catch (err) {
+            return { allowed: true, current: 0, limit: limits.orders }
         }
     }
 
@@ -119,14 +209,26 @@ function Order() {
         return true
     }
 
-    function goToPayment() {
-        if (validateStep2()) {
-            // FREE tier doesn't need payment - go directly to confirmation
-            if (selectedPackage === 'free') {
-                processOrder()
-            } else {
-                setShowPayment(true)
-            }
+    async function goToPayment() {
+        if (!validateStep2()) return
+        
+        // Check order limit
+        const limitCheck = await checkOrderLimit(selectedPackage)
+        if (!limitCheck.allowed) {
+            alert(`You have reached the maximum of ${limitCheck.limit} orders for the ${selectedPackage} package. Please upgrade to create more!`)
+            return
+        }
+        
+        // Show current orders info
+        if (limitCheck.limit !== 'Unlimited') {
+            console.log(`You have ${limitCheck.current}/${limitCheck.limit} orders`)
+        }
+        
+        // FREE tier doesn't need payment - go directly to confirmation
+        if (selectedPackage === 'free') {
+            processOrder()
+        } else {
+            setShowPayment(true)
         }
     }
 
@@ -382,6 +484,24 @@ function Order() {
                             <div className="text-5xl mb-3">🎁</div>
                             <h2 className="text-2xl font-bold text-gray-700">Choose Your Package</h2>
                             <p className="text-gray-500">Select the perfect surprise for {recipientName}</p>
+                        </div>
+
+                        {/* Currency Toggle */}
+                        <div className="flex justify-center mb-6">
+                            <div className="bg-white rounded-full p-1 flex shadow-lg">
+                                <button
+                                    onClick={() => setCurrency('GHS')}
+                                    className={`px-4 py-2 rounded-full text-sm font-semibold transition ${currency === 'GHS' ? 'bg-rose-500 text-white' : 'text-gray-600'}`}
+                                >
+                                    🇬🇭 Cedis (GHS)
+                                </button>
+                                <button
+                                    onClick={() => setCurrency('USD')}
+                                    className={`px-4 py-2 rounded-full text-sm font-semibold transition ${currency === 'USD' ? 'bg-rose-500 text-white' : 'text-gray-600'}`}
+                                >
+                                    🇺🇸 Dollars (USD)
+                                </button>
+                            </div>
                         </div>
 
                         <div className="space-y-4 mb-6">

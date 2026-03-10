@@ -107,46 +107,96 @@ function Admin() {
     }
 
     async function loadOrders() {
-        // DEBUG: Log all localStorage orders to console
-        const allOrders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]')
-        console.log('=== DEBUG: All orders in localStorage (Admin) ===', allOrders)
-        console.log('Total orders in localStorage:', allOrders.length)
-
-        // Load from localStorage
-        const localOrders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]')
-
-        // Try to load from Supabase
+        // Try to load from Supabase first
         try {
             const { data, error } = await supabase
                 .from('orders')
                 .select('*')
+                .order('created_at', { ascending: false })
 
             if (data && data.length > 0) {
-                // Merge with local orders
-                const mergedOrders = [...data]
-                localOrders.forEach(localOrder => {
-                    if (!mergedOrders.find(o => o.code === localOrder.code)) {
-                        mergedOrders.push(localOrder)
-                    }
-                })
-                setOrders(mergedOrders)
-            } else if (error) {
-                // Table might not exist, that's ok - use localStorage
-                console.log('Supabase orders table not available, using local storage')
-                setOrders(localOrders)
-            } else {
-                setOrders(localOrders)
+                console.log('Loaded orders from Supabase:', data.length)
+                setOrders(data)
+                return
             }
         } catch (err) {
-            // Supabase not available, use localStorage
-            console.log('Supabase not available, using local storage')
-            setOrders(localOrders)
+            console.log('Supabase error:', err)
         }
+        
+        // Fallback to localStorage
+        const localOrders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]')
+        console.log('Loaded orders from localStorage:', localOrders.length)
+        setOrders(localOrders)
     }
 
     function loadUsers() {
+        // Load from localStorage first
         const localUsers = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]')
         setUsers(localUsers)
+        
+        // Also try to load from orders table (users who created orders)
+        loadUsersFromOrders()
+    }
+    
+    async function loadUsersFromOrders() {
+        try {
+            const { data, error } = await supabase
+                .from('orders')
+                .select('user_id, giver_name, giver_phone, created_at')
+                
+            if (data && data.length > 0) {
+                // Get unique users from orders (both with and without user_id)
+                const uniqueUsers = {}
+                data.forEach(order => {
+                    // First try to add by user_id
+                    if (order.user_id) {
+                        if (!uniqueUsers[order.user_id]) {
+                            uniqueUsers[order.user_id] = {
+                                id: order.user_id,
+                                name: order.giver_name || 'User',
+                                email: order.giver_phone || 'No email',
+                                phone: order.giver_phone || '',
+                                role: 'user',
+                                createdAt: order.created_at
+                            }
+                        }
+                    }
+                    // Also add by giver_name if available (for orders without user_id)
+                    if (order.giver_name && !order.user_id) {
+                        const key = 'giver_' + order.giver_name
+                        if (!uniqueUsers[key]) {
+                            uniqueUsers[key] = {
+                                id: key,
+                                name: order.giver_name,
+                                email: order.giver_phone || 'No email',
+                                phone: order.giver_phone || '',
+                                role: 'user',
+                                createdAt: order.created_at
+                            }
+                        }
+                    }
+                })
+                
+                const orderUsers = Object.values(uniqueUsers)
+                console.log('Users from orders:', orderUsers)
+                
+                // Get local users
+                const localUsersList = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]')
+                
+                // Merge with local users
+                const allUsers = [...localUsersList]
+                orderUsers.forEach(orderUser => {
+                    if (!allUsers.find(u => u.id === orderUser.id)) {
+                        allUsers.push(orderUser)
+                    }
+                })
+                
+                console.log('Total users after merge:', allUsers.length)
+                setUsers(allUsers)
+            }
+        } catch (err) {
+            console.log('Could not load users from orders:', err)
+        }
     }
 
     function createUser() {
@@ -488,6 +538,12 @@ The user can now access their birthday page using this code!`)
                                                                         <span className="bg-gray-200 px-2 py-0.5 rounded font-mono">{order.code}</span>
                                                                         <span className="ml-2">{order.package}</span>
                                                                     </div>
+                                                                    <div className="text-xs text-gray-500 mt-1">
+                                                                        🎁 From: {order.giver_name || 'Anonymous'}
+                                                                    </div>
+                                                                    <div className="text-xs text-gray-500">
+                                                                        📅 Birthday: {order.birthday_date || order.date_of_birth || 'Not set'}
+                                                                    </div>
                                                                 </div>
                                                                 <div className="text-right">
                                                                     <span className={`inline-block px-2 py-1 rounded-full text-xs font-bold ${order.status === 'paid'
@@ -507,6 +563,9 @@ The user can now access their birthday page using this code!`)
                                                                 </div>
                                                             </div>
                                                             <div className="mt-2 flex gap-3 text-xs">
+                                                                <div className="text-gray-500">
+                                                                    📞 {order.giver_phone || 'No phone'}
+                                                                </div>
                                                                 <Link
                                                                     to={`/birthday/${order.code}`}
                                                                     className="text-rose-500 hover:text-rose-600"

@@ -178,7 +178,21 @@ function Upload() {
         e.target.value = ''
     }
 
+    // Package limits for photos
+    const packagePhotoLimits = {
+        'free': 5,
+        'basic': 10,
+        'premium': 15,
+        'unlimited': 999 // Very high number for unlimited
+    }
+
     function addPhoto(url) {
+        // Check photo limit based on package
+        if (uploadedPhotos.length >= 5) {
+            showNotification('Photo limit reached! Upgrade your package for more uploads.')
+            return
+        }
+        
         // Tag photos as 'gallery' for birthday page photos
         // Use 'slideshow' for message photos
         const tag = 'gallery'
@@ -399,6 +413,7 @@ function Upload() {
                             <div className="text-6xl mb-4">📤</div>
                             <p className="text-xl text-gray-600 font-semibold">Tap to Upload Photos</p>
                             <p className="text-gray-400 text-sm mt-2">Max 5MB each • JPG, PNG, GIF • Select multiple files</p>
+                            <p className="text-rose-500 text-sm mt-2 font-semibold">Limit: {uploadedPhotos.length}/5 photos</p>
                         </div>
 
                         {/* Hidden file input for fallback - multiple files */}
