@@ -27,6 +27,8 @@ function Login() {
             if (authError) {
                 if (authError.message.includes('429') || authError.message.includes('rate limit')) {
                     setError('Too many requests. Please wait a moment and try again.')
+                } else if (authError.message.includes('Email not confirmed')) {
+                    setError('Please confirm your email address before logging in. Check your inbox for the confirmation link.')
                 } else {
                     setError('Invalid email or password')
                 }
@@ -52,6 +54,12 @@ function Login() {
                 // Save current user
                 localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user))
                 setIsLoading(false)
+
+                // Check if user needs to select a package
+                if (!user.package_tier) {
+                    navigate('/select-package')
+                    return
+                }
 
                 // Check if admin
                 if (user.role === 'admin' || user.role === 'super_admin') {

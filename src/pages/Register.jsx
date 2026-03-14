@@ -39,6 +39,8 @@ function Register() {
             if (authError) {
                 if (authError.message.includes('429') || authError.message.includes('rate limit')) {
                     setError('Too many requests. Please wait a moment and try again.')
+                } else if (authError.message.includes('User already registered')) {
+                    setError('An account with this email already exists. Please login instead.')
                 } else {
                     setError(authError.message)
                 }
@@ -60,6 +62,14 @@ function Register() {
                     console.log('Profile save error:', profileError.message)
                 }
 
+                // Check if email confirmation is required
+                if (!authData.user.email_confirmed_at) {
+                    // Show confirmation message instead of auto-redirect
+                    setSuccess(true)
+                    setIsLoading(false)
+                    return
+                }
+
                 // Auto login - save session
                 const { data: sessionData } = await supabase.auth.getSession()
                 if (sessionData.session) {
@@ -73,7 +83,7 @@ function Register() {
 
                 setSuccess(true)
                 setTimeout(() => {
-                    navigate('/dashboard')
+                    navigate('/select-package')
                 }, 2000)
             }
 
@@ -107,7 +117,8 @@ function Register() {
                         <div className="text-center">
                             <div className="text-5xl mb-4">✅</div>
                             <h2 className="text-xl font-bold text-gray-700 mb-2">Account Created!</h2>
-                            <p className="text-gray-500">Redirecting to your dashboard...</p>
+                            <p className="text-gray-500">We've sent a confirmation email to <strong>{email}</strong>. Please check your inbox and click the confirmation link to activate your account.</p>
+                            <p className="text-gray-500 mt-4">After confirming your email, you can login and select your package.</p>
                         </div>
                     ) : (
                         <form onSubmit={handleRegister}>

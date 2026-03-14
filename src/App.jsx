@@ -13,6 +13,7 @@ import Register from './pages/Register'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Welcome from './pages/Welcome'
+import SelectPackage from './pages/SelectPackage'
 
 function App() {
     return (
@@ -26,6 +27,7 @@ function App() {
                 <Route path="/order-status" element={<OrderStatus />} />
                 <Route path="/register" element={<Register />} />
                 <Route path="/login" element={<Login />} />
+                <Route path="/select-package" element={<SelectPackage />} />
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/birthday/:code" element={<Birthday />} />
                 <Route path="/upload/:code" element={<Upload />} />

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase, STORAGE_KEYS } from '../supabase'
+import { usePackage, DEFAULT_PACKAGES } from '../hooks/usePackage.jsx'
 
 function Dashboard() {
     const navigate = useNavigate()
@@ -12,6 +13,16 @@ function Dashboard() {
     const [recipientName, setRecipientName] = useState('')
     const [birthdayDate, setBirthdayDate] = useState('')
     const [selectedPackage, setSelectedPackage] = useState('free')
+    const [pageType, setPageType] = useState('birthday')
+    const [paymentPending, setPaymentPending] = useState(false)
+
+    // Helper to check if premium features are unlocked
+    const hasFeatureAccess = (tier) => {
+        if (!tier || tier === 'free') return false
+        // Check if payment is confirmed
+        if (user?.payment_status !== 'confirmed') return false
+        return true
+    }
 
     // Birthday Details state
     const [birthdayDetails, setBirthdayDetails] = useState({
@@ -33,6 +44,22 @@ function Dashboard() {
             navigate('/login')
             return
         }
+        
+        // Check if user has selected a package - redirect if not
+        if (!currentUser.package_tier) {
+            navigate('/select-package')
+            return
+        }
+        
+        // Check if payment is confirmed for paid packages
+        // Only show pending if payment_status is explicitly 'pending' (new selections awaiting confirmation)
+        // Existing users without payment_status are assumed to be confirmed
+        const paymentStatus = currentUser.payment_status
+        if (currentUser.package_tier !== 'free' && paymentStatus === 'pending') {
+            // User has a paid package but payment not confirmed - show pending state
+            setPaymentPending(true)
+        }
+        
         setUser(currentUser)
 
         // Load user's orders
@@ -182,6 +209,33 @@ function Dashboard() {
             return
         }
 
+        const userTier = user?.package_tier || 'free'
+
+        // Check page type access based on package
+        const allowedPageTypes = {
+            free: ['birthday'],
+            basic: ['birthday', 'wedding'],
+            premium: ['birthday', 'wedding', 'anniversary', 'graduation'],
+            enterprise: ['birthday', 'wedding', 'anniversary', 'graduation', 'custom']
+        }
+        if (!allowedPageTypes[userTier]?.includes(pageType)) {
+            alert(`Your current package (${userTier}) does not allow creating ${pageType} pages. Please upgrade your package.`)
+            return
+        }
+
+        // Check page limit based on package
+        const maxPagesPerTier = {
+            free: 1,
+            basic: 3,
+            premium: 10,
+            enterprise: 999999
+        }
+        const maxPages = maxPagesPerTier[userTier] || 1
+        if (orders.length >= maxPages) {
+            alert(`Your current package (${userTier}) allows only ${maxPages} page(s). Please upgrade to create more pages.`)
+            return
+        }
+
         const code = generateCode()
         console.log('Creating order with user:', user)
 
@@ -191,9 +245,10 @@ function Dashboard() {
             code,
             recipientName: recipientName.trim(),
             birthdayDate,
-            package: selectedPackage,
-            price: selectedPackage === 'premium' ? 10 : (selectedPackage === 'basic' ? 5 : 0),
-            status: selectedPackage === 'free' ? 'active' : 'pending',
+            pageType: pageType,
+            package: user?.package_tier || 'free',
+            price: user?.package_tier === 'premium' ? 10 : (user?.package_tier === 'basic' ? 5 : 0),
+            status: user?.package_tier === 'free' ? 'active' : 'pending',
             createdAt: new Date().toISOString(),
             // Birthday details
             birthdayDetails: {
@@ -221,6 +276,7 @@ function Dashboard() {
                 user_id: user?.id,
                 recipient_name: newOrder.recipientName,
                 birthday_date: newOrder.birthdayDate,
+                page_type: pageType,
                 package: newOrder.package,
                 status: newOrder.status,
                 created_at: new Date().toISOString()
@@ -240,6 +296,7 @@ function Dashboard() {
         setRecipientName('')
         setBirthdayDate('')
         setSelectedPackage('free')
+        setPageType('birthday')
 
         // Show success message and stay on dashboard
         alert(`Birthday page created! Code: ${code}\n\nShare this link with ${recipientName}:\n${window.location.origin}/birthday/${code}`)
@@ -247,12 +304,14 @@ function Dashboard() {
 
     // Get max photos based on tier
     function getMaxPhotos(packageType) {
-        switch (packageType) {
-            case 'premium': return 15
-            case 'basic': return 10
-            case 'free': return 5
-            default: return 5
+        const tier = packageType || user?.package_tier || 'free'
+        const maxPhotosPerTier = {
+            premium: 50,
+            basic: 15,
+            free: 5,
+            enterprise: 999999
         }
+        return maxPhotosPerTier[tier] || 5
     }
 
     // Open birthday details modal
@@ -546,8 +605,29 @@ function Dashboard() {
 
     return (
         <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)' }}>
+            {/* Payment Pending Warning */}
+            {paymentPending && (
+                <div className="bg-yellow-50 border-b-2 border-yellow-400 p-3 md:p-4 fixed top-0 left-0 right-0 z-40">
+                    <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-2 md:gap-4">
+                        <div className="flex items-center gap-2 md:gap-3">
+                            <span className="text-xl md:text-2xl">⏳</span>
+                            <div>
+                                <p className="font-bold text-yellow-800 text-sm md:text-base">Payment Pending Confirmation</p>
+                                <p className="text-xs md:text-sm text-yellow-700">Your {user?.package_tier} package is waiting for admin confirmation. Basic features are available.</p>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={() => window.location.reload()}
+                            className="px-3 md:px-4 py-1.5 md:py-2 bg-yellow-500 text-white rounded-lg font-semibold hover:bg-yellow-600 transition text-sm"
+                        >
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+            )}
+            
             {/* Header */}
-            <div className="fixed top-0 left-0 right-0 bg-white/80 backdrop-blur-md shadow-sm z-50">
+            <div className={`fixed left-0 right-0 bg-white/80 backdrop-blur-md shadow-sm z-40 ${paymentPending ? 'top-[72px] md:top-[72px]' : 'top-0'}`}>
                 <div className="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
                     <div className="flex items-center gap-3">
                         <button onClick={() => navigate('/')} className="text-rose-500 hover:text-rose-600">
@@ -555,11 +635,33 @@ function Dashboard() {
                         </button>
                         <h1 className="text-xl font-['Dancing_Script'] text-rose-500">💕 My Dashboard</h1>
                     </div>
-                    <button onClick={logout} className="text-rose-500 text-sm">Logout</button>
+                    <div className="flex items-center gap-4">
+                        {/* Package Badge in Header */}
+                        {user?.package_tier && (
+                            <div className={`flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 rounded-full text-xs md:text-sm font-semibold 
+                                ${user.package_tier === 'premium' ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white' : 
+                                  user.package_tier === 'enterprise' ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white' :
+                                  user.package_tier === 'basic' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}>
+                                <span>{user.package_name || user.package_tier?.toUpperCase()}</span>
+                                {user.payment_status !== 'confirmed' && user.package_tier !== 'free' && (
+                                    <span className="text-[10px] md:text-xs bg-yellow-500 text-white px-1 rounded animate-pulse flex-shrink-0">!</span>
+                                )}
+                                {user.package_tier !== 'enterprise' && (
+                                    <button 
+                                        onClick={() => navigate('/select-package?upgrade=true')}
+                                        className="text-[10px] md:text-xs opacity-80 hover:opacity-100 underline hidden md:inline"
+                                    >
+                                        Upgrade
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                        <button onClick={logout} className="text-rose-500 text-sm">Logout</button>
+                    </div>
                 </div>
             </div>
 
-            <div className="pt-20 px-4 pb-8 max-w-4xl mx-auto">
+            <div className={`px-4 pb-8 max-w-4xl mx-auto ${paymentPending ? 'pt-28' : 'pt-20'}`}>
                 {/* Welcome */}
                 <div className="bg-white rounded-3xl shadow-xl p-6 mb-6">
                     <div className="flex items-center gap-4">
@@ -666,6 +768,54 @@ function Dashboard() {
                         <h3 className="text-xl font-bold text-gray-700 mb-4">Create Birthday Page</h3>
 
                         <div className="space-y-4">
+                            {/* Page Type Selection */}
+                            <div>
+                                <label className="block text-gray-600 mb-2">Page Type</label>
+                                <select
+                                    value={pageType}
+                                    onChange={(e) => setPageType(e.target.value)}
+                                    className="w-full p-3 border-2 border-rose-200 rounded-xl"
+                                >
+                                    <option value="birthday">Birthday 🎂</option>
+                                    {user?.package_tier && user?.package_tier !== 'free' ? (
+                                        hasFeatureAccess(user.package_tier) ? (
+                                            <>
+                                                <option value="wedding">Wedding 💒</option>
+                                            </>
+                                        ) : (
+                                            <option value="wedding" disabled>Wedding 💒 (Payment Pending)</option>
+                                        )
+                                    ) : null}
+                                    {user?.package_tier === 'premium' || user?.package_tier === 'enterprise' ? (
+                                        hasFeatureAccess(user.package_tier) ? (
+                                            <>
+                                                <option value="anniversary">Anniversary 💕</option>
+                                                <option value="graduation">Graduation 🎓</option>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <option value="anniversary" disabled>Anniversary 💕 (Payment Pending)</option>
+                                                <option value="graduation" disabled>Graduation 🎓 (Payment Pending)</option>
+                                            </>
+                                        )
+                                    ) : null}
+                                    {user?.package_tier === 'enterprise' ? (
+                                        hasFeatureAccess(user.package_tier) ? (
+                                            <option value="custom">Custom ✨</option>
+                                        ) : (
+                                            <option value="custom" disabled>Custom ✨ (Payment Pending)</option>
+                                        )
+                                    ) : null}
+                                </select>
+                                {pageType !== 'birthday' && (
+                                    <p className="text-xs text-rose-500 mt-1">
+                                        {pageType === 'wedding' && 'Wedding pages require Basic or higher'}
+                                        {pageType === 'anniversary' && 'Anniversary pages require Premium or higher'}
+                                        {pageType === 'graduation' && 'Graduation pages require Premium or higher'}
+                                        {pageType === 'custom' && 'Custom pages require Enterprise'}
+                                    </p>
+                                )}
+                            </div>
                             <div>
                                 <label className="block text-gray-600 mb-2">Birthday Person's Name</label>
                                 <input
@@ -691,11 +841,13 @@ function Dashboard() {
                                     value={selectedPackage}
                                     onChange={(e) => setSelectedPackage(e.target.value)}
                                     className="w-full p-3 border-2 border-rose-200 rounded-xl"
+                                    disabled
                                 >
-                                    <option value="free">Free - Up to 5 photos</option>
-                                    <option value="basic">Basic - ₵5 (10 photos)</option>
-                                    <option value="premium">Premium - ₵10 (15 photos)</option>
+                                    <option value={user?.package_tier || 'free'}>
+                                        {user?.package_name?.toUpperCase() || (user?.package_tier || 'Free').toUpperCase()} Plan
+                                    </option>
                                 </select>
+                                <p className="text-xs text-gray-500 mt-1">Your package is tied to your account</p>
                             </div>
                         </div>
 

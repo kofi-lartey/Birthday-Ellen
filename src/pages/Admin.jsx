@@ -16,7 +16,7 @@ function Admin() {
     const [gifts, setGifts] = useState([])
     const [shareLink, setShareLink] = useState('')
     const [copyStatus, setCopyStatus] = useState(false)
-    const [activeTab, setActiveTab] = useState('orders') // 'orders', 'users', or 'birthday'
+    const [activeTab, setActiveTab] = useState('orders') // 'orders', 'users', 'birthday', 'payments'
     const [users, setUsers] = useState([])
     const [showUserModal, setShowUserModal] = useState(false)
     const [newUserName, setNewUserName] = useState('')
@@ -25,6 +25,7 @@ function Admin() {
     const [newUserRole, setNewUserRole] = useState('user')
     const [expandedUser, setExpandedUser] = useState(null)
     const [orders, setOrders] = useState([])
+    const [pendingPayments, setPendingPayments] = useState([])
 
     // Group orders by user (giver)
     const ordersByUser = orders.reduce((acc, order) => {
@@ -104,6 +105,83 @@ function Admin() {
         // Get gifts
         const giftsData = JSON.parse(localStorage.getItem(STORAGE_KEYS.GIFTS) || '[]')
         setGifts(giftsData)
+        
+        // Load pending payments
+        loadPendingPayments()
+    }
+
+    async function loadPendingPayments() {
+        try {
+            // Get users with pending payments (non-free packages)
+            const { data: usersData, error } = await supabase
+                .from('users')
+                .select('*')
+                .in('package_tier', ['basic', 'premium', 'enterprise'])
+                
+            if (usersData) {
+                // Filter to show users whose payment is not confirmed
+                const pending = usersData.filter(u => 
+                    u.payment_status !== 'confirmed' && 
+                    u.package_tier !== 'free'
+                )
+                setPendingPayments(pending)
+            }
+        } catch (err) {
+            console.log('Could not load pending payments:', err)
+        }
+    }
+
+    async function confirmPayment(userId, packageTier) {
+        try {
+            // Update user payment status
+            const { error } = await supabase
+                .from('users')
+                .update({
+                    payment_status: 'confirmed',
+                    payment_confirmed_at: new Date().toISOString(),
+                    payment_confirmed_by: 'admin'
+                })
+                .eq('id', userId)
+
+            if (error) {
+                alert('Error confirming payment: ' + error.message)
+                return
+            }
+
+            alert('Payment confirmed! User can now access their package features.')
+            loadPendingPayments()
+        } catch (err) {
+            alert('Error confirming payment')
+        }
+    }
+
+    async function rejectPayment(userId) {
+        if (!confirm('Are you sure you want to reject this payment? The user will be downgraded to free tier.')) {
+            return
+        }
+        
+        try {
+            // Reset user to free tier
+            const { error } = await supabase
+                .from('users')
+                .update({
+                    package_tier: 'free',
+                    package_id: 1,
+                    payment_status: 'rejected',
+                    payment_confirmed_at: null
+                })
+                .eq('id', userId)
+
+            if (error) {
+                alert('Error rejecting payment: ' + error.message)
+                return
+            }
+
+            alert('Payment rejected. User has been downgraded to free tier.')
+            loadPendingPayments()
+        } catch (err) {
+            alert('Error rejecting payment')
+        }
     }
 
     async function loadOrders() {
@@ -196,6 +274,96 @@ function Admin() {
             }
         } catch (err) {
             console.log('Could not load users from orders:', err)
+        }
+    }
+
+    // Load pending payments from localStorage
+    async function loadPendingPayments() {
+        try {
+            // Get pending payments from localStorage
+            const pendingData = localStorage.getItem('pending_payments') || '[]'
+            const payments = JSON.parse(pendingData)
+            
+            console.log('Pending payments:', payments)
+            setPendingPayments(payments)
+        } catch (err) {
+            console.log('Error loading pending payments:', err)
+        }
+    }
+
+    // Confirm a payment and update user package
+    async function confirmPayment(paymentId, packageTier) {
+        try {
+            // Get current pending payments
+            const pendingData = localStorage.getItem('pending_payments') || '[]'
+            let payments = JSON.parse(pendingData)
+            
+            // Find the payment
+            const payment = payments.find(p => p.id === paymentId)
+            if (!payment) {
+                alert('Payment not found')
+                return
+            }
+            
+            // Get current users from localStorage
+            const STORAGE_KEYS = {
+                USERS: 'birthday_app_users'
+            }
+            const usersData = localStorage.getItem(STORAGE_KEYS.USERS) || '[]'
+            const users = JSON.parse(usersData)
+            
+            // Find and update the user
+            const userIndex = users.findIndex(u => u.email === payment.email)
+            if (userIndex !== -1) {
+                // Update user's package tier and payment status
+                users[userIndex].package_tier = packageTier
+                users[userIndex].payment_status = 'confirmed'
+                users[userIndex].payment_confirmed_at = new Date().toISOString()
+                
+                // Save updated users
+                localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users))
+                console.log('User package updated:', users[userIndex])
+            }
+            
+            // Remove from pending payments
+            payments = payments.filter(p => p.id !== paymentId)
+            localStorage.setItem('pending_payments', JSON.stringify(payments))
+            
+            // Refresh the pending payments list
+            setPendingPayments(payments)
+            
+            alert(`Payment confirmed! User now has ${packageTier} package.`)
+        } catch (err) {
+            console.log('Error confirming payment:', err)
+            alert('Error confirming payment')
+        }
+    }
+
+    // Reject a payment
+    async function rejectPayment(paymentId) {
+        try {
+            if (!confirm('Are you sure you want to reject this payment?')) {
+                return
+            }
+            
+            // Get current pending payments
+            const pendingData = localStorage.getItem('pending_payments') || '[]'
+            let payments = JSON.parse(pendingData)
+            
+            // Get the payment info before removing
+            const payment = payments.find(p => p.id === paymentId)
+            
+            // Remove from pending payments
+            payments = payments.filter(p => p.id !== paymentId)
+            localStorage.setItem('pending_payments', JSON.stringify(payments))
+            
+            // Refresh the pending payments list
+            setPendingPayments(payments)
+            
+            alert('Payment rejected.')
+        } catch (err) {
+            console.log('Error rejecting payment:', err)
+            alert('Error rejecting payment')
         }
     }
 
@@ -466,6 +634,15 @@ The user can now access their birthday page using this code!`)
                         >
                             👑 Birthday Pages
                         </button>
+                        <button
+                            onClick={() => { setActiveTab('payments'); loadPendingPayments(); }}
+                            className={`flex-1 py-3 rounded-xl font-semibold transition ${activeTab === 'payments'
+                                ? 'bg-green-500 text-white'
+                                : 'bg-gray-100 text-gray-600'
+                                }`}
+                        >
+                            💰 Payments {pendingPayments.length > 0 && `(${pendingPayments.length})`}
+                        </button>
                     </div>
 
                     {/* Orders Tab */}
@@ -649,7 +826,120 @@ The user can now access their birthday page using this code!`)
                                 <h2 className="text-xl font-bold text-gray-700">Birthday Pages Dashboard</h2>
                                 <p className="text-gray-500">Manage birthday pages</p>
                             </div>
+                            
+                            <div className="space-y-4">
+                                {orders.filter(o => o.package !== 'free').length === 0 ? (
+                                    <div className="text-center py-8 text-gray-500">
+                                        <p>No paid birthday pages yet</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {orders.filter(o => o.package !== 'free').slice(0, 20).map((order, idx) => (
+                                            <div key={idx} className="bg-white rounded-xl p-4 shadow">
+                                                <div className="flex justify-between items-start">
+                                                    <div>
+                                                        <p className="font-semibold">{order.recipient_name || 'Unknown'}</p>
+                                                        <p className="text-sm text-gray-500">Code: {order.code}</p>
+                                                        <p className="text-sm text-gray-500">Package: {order.package}</p>
+                                                        <p className="text-sm text-gray-500">Status: {order.status}</p>
+                                                    </div>
+                                                    <span className={`px-2 py-1 rounded text-xs ${order.status === 'paid' ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600'}`}>
+                                                        {order.status}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
+                    {/* Payments Tab */}
+                    {activeTab === 'payments' && (
+                        <div className="space-y-4">
+                            <div className="text-center mb-4">
+                                <h2 className="text-xl font-bold text-gray-700">💰 Payment Verification</h2>
+                                <p className="text-gray-500">Confirm or reject user payments</p>
+                            </div>
+
+                            {pendingPayments.length === 0 ? (
+                                <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center">
+                                    <div className="text-4xl mb-2">✅</div>
+                                    <p className="text-green-600 font-semibold">No pending payments!</p>
+                                    <p className="text-green-500 text-sm">All payments have been processed</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4">
+                                        <p className="text-yellow-700 font-semibold">
+                                            ⚠️ {pendingPayments.length} payment(s) waiting for verification
+                                        </p>
+                                    </div>
+                                    
+                                    {pendingPayments.map((payment) => (
+                                        <div key={payment.id} className="bg-white rounded-xl p-4 shadow border-l-4 border-yellow-400">
+                                            <div className="flex justify-between items-start mb-3">
+                                                <div>
+                                                    <p className="font-bold text-lg">{payment.name || 'Unknown User'}</p>
+                                                    <p className="text-gray-500 text-sm">{payment.email}</p>
+                                                    {payment.phone && <p className="text-gray-500 text-sm">📱 {payment.phone}</p>}
+                                                </div>
+                                                <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-sm font-semibold">
+                                                    {payment.package_tier?.toUpperCase()} - Pending
+                                                </span>
+                                            </div>
+                                            
+                                            <div className="bg-gray-50 rounded-lg p-3 mb-3">
+                                                <p className="text-sm text-gray-600">
+                                                    <strong>Package:</strong> {payment.package_tier === 'basic' ? '$9.99/mo Basic' : 
+                                                        payment.package_tier === 'premium' ? '$24.99/mo Premium' : 
+                                                        '$99.99/yr Enterprise'}
+                                                </p>
+                                                <p className="text-sm text-gray-500">
+                                                    Selected: {new Date(payment.created_at || Date.now()).toLocaleDateString()}
+                                                </p>
+                                            </div>
+                                            
+                                            <div className="flex gap-3">
+                                                <button
+                                                    onClick={() => confirmPayment(payment.id, payment.package_tier)}
+                                                    className="flex-1 bg-green-500 text-white py-2 px-4 rounded-lg font-semibold hover:bg-green-600 transition"
+                                                >
+                                                    ✅ Confirm Payment
+                                                </button>
+                                                <button
+                                                    onClick={() => rejectPayment(payment.id)}
+                                                    className="flex-1 bg-red-500 text-white py-2 px-4 rounded-lg font-semibold hover:bg-red-600 transition"
+                                                >
+                                                    ❌ Reject
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Payment History */}
+                            <div className="mt-8">
+                                <h3 className="text-lg font-bold text-gray-700 mb-4">📜 Recent Confirmed Payments</h3>
+                                <div className="bg-white rounded-xl p-4 shadow">
+                                    <p className="text-gray-500 text-sm">
+                                        View confirmed payments history in the Payments table
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Birthday Pages Tab */}
+                    {activeTab === 'birthday' && (
+                        <div className="space-y-4">
+                            <div className="text-center mb-4">
+                                <h2 className="text-xl font-bold text-gray-700">Birthday Pages Dashboard</h2>
+                                <p className="text-gray-500">Manage birthday pages</p>
+                            </div>
+                            
                             <div className="space-y-4">
                                 <Link
                                     to="/upload"
