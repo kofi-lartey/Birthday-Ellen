@@ -62,9 +62,39 @@ function Dashboard() {
         
         setUser(currentUser)
 
+        // Refresh user data from Supabase to get latest payment_status
+        refreshUserFromSupabase(currentUser.id)
+
         // Load user's orders
         loadUserOrders(currentUser)
     }, [navigate])
+
+    // Refresh user data from Supabase
+    async function refreshUserFromSupabase(userId) {
+        try {
+            const { data, error } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id', userId)
+                .single()
+            
+            if (data && !error) {
+                console.log('Dashboard - Refreshed user from Supabase:', data)
+                // Update localStorage with fresh data
+                localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(data))
+                setUser(data)
+                
+                // Update payment pending state
+                if (data.package_tier !== 'free' && data.payment_status === 'pending') {
+                    setPaymentPending(true)
+                } else {
+                    setPaymentPending(false)
+                }
+            }
+        } catch (err) {
+            console.log('Error refreshing user from Supabase:', err)
+        }
+    }
 
     function loadUserOrders(userOrId) {
         const userId = typeof userOrId === 'object' ? userOrId.id : userOrId
@@ -678,7 +708,7 @@ function Dashboard() {
                     onClick={() => setShowCreateModal(true)}
                     className="w-full bg-gradient-to-r from-rose-500 to-pink-500 text-white py-4 rounded-xl font-semibold text-lg mb-3 hover:shadow-lg transition"
                 >
-                    + Create New Birthday Page
+                    + Create New Event Page
                 </button>
 
                 {/* Sync to Supabase Button */}
@@ -764,103 +794,189 @@ function Dashboard() {
             {/* Create Modal */}
             {showCreateModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-3xl p-6 max-w-md w-full">
-                        <h3 className="text-xl font-bold text-gray-700 mb-4">Create Birthday Page</h3>
+                    <div className="bg-white rounded-3xl p-4 md:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+                        <h3 className="text-xl font-bold text-gray-700 mb-4">Create New Event Page</h3>
 
-                        <div className="space-y-4">
-                            {/* Page Type Selection */}
+                        <div className="space-y-3">
+                            {/* Page Type Selection - Navigation Menu */}
                             <div>
-                                <label className="block text-gray-600 mb-2">Page Type</label>
-                                <select
-                                    value={pageType}
-                                    onChange={(e) => setPageType(e.target.value)}
-                                    className="w-full p-3 border-2 border-rose-200 rounded-xl"
-                                >
-                                    <option value="birthday">Birthday 🎂</option>
-                                    {user?.package_tier && user?.package_tier !== 'free' ? (
-                                        hasFeatureAccess(user.package_tier) ? (
-                                            <>
-                                                <option value="wedding">Wedding 💒</option>
-                                            </>
-                                        ) : (
-                                            <option value="wedding" disabled>Wedding 💒 (Payment Pending)</option>
-                                        )
-                                    ) : null}
-                                    {user?.package_tier === 'premium' || user?.package_tier === 'enterprise' ? (
-                                        hasFeatureAccess(user.package_tier) ? (
-                                            <>
-                                                <option value="anniversary">Anniversary 💕</option>
-                                                <option value="graduation">Graduation 🎓</option>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <option value="anniversary" disabled>Anniversary 💕 (Payment Pending)</option>
-                                                <option value="graduation" disabled>Graduation 🎓 (Payment Pending)</option>
-                                            </>
-                                        )
-                                    ) : null}
-                                    {user?.package_tier === 'enterprise' ? (
-                                        hasFeatureAccess(user.package_tier) ? (
-                                            <option value="custom">Custom ✨</option>
-                                        ) : (
-                                            <option value="custom" disabled>Custom ✨ (Payment Pending)</option>
-                                        )
-                                    ) : null}
-                                </select>
-                                {pageType !== 'birthday' && (
-                                    <p className="text-xs text-rose-500 mt-1">
-                                        {pageType === 'wedding' && 'Wedding pages require Basic or higher'}
-                                        {pageType === 'anniversary' && 'Anniversary pages require Premium or higher'}
-                                        {pageType === 'graduation' && 'Graduation pages require Premium or higher'}
-                                        {pageType === 'custom' && 'Custom pages require Enterprise'}
-                                    </p>
+                                <label className="block text-gray-600 mb-1 font-semibold text-sm">Select Event Type</label>
+                                
+                                {/* Page Type Navigation Menu/List */}
+                                <div className="grid grid-cols-3 gap-2">
+                                    {/* Birthday - Available to all */}
+                                    <button
+                                        onClick={() => setPageType('birthday')}
+                                        className={`p-2 rounded-lg border-2 transition text-center ${
+                                            pageType === 'birthday' 
+                                                ? 'border-rose-500 bg-rose-50' 
+                                                : 'border-gray-200 hover:border-rose-300'
+                                        }`}
+                                    >
+                                        <div className="text-xl mb-1">🎂</div>
+                                        <div className="font-semibold text-gray-700 text-xs">Birthday</div>
+                                    </button>
+
+                                    {/* Wedding - Basic and above */}
+                                    {(user?.package_tier === 'basic' || user?.package_tier === 'premium' || user?.package_tier === 'enterprise') && hasFeatureAccess(user.package_tier) ? (
+                                        <button
+                                            onClick={() => setPageType('wedding')}
+                                            className={`p-2 rounded-lg border-2 transition text-center ${
+                                                pageType === 'wedding' 
+                                                    ? 'border-rose-500 bg-rose-50' 
+                                                    : 'border-gray-200 hover:border-rose-300'
+                                            }`}
+                                        >
+                                            <div className="text-xl mb-1">💒</div>
+                                            <div className="font-semibold text-gray-700 text-xs">Wedding</div>
+                                        </button>
+                                    ) : (
+                                        <button
+                                            disabled
+                                            className="p-2 rounded-lg border-2 border-gray-100 bg-gray-50 opacity-60 text-center"
+                                        >
+                                            <div className="text-xl mb-1">💒</div>
+                                            <div className="font-semibold text-gray-400 text-xs">Wedding</div>
+                                        </button>
+                                    )}
+
+                                    {/* Anniversary - Premium and above */}
+                                    {(user?.package_tier === 'premium' || user?.package_tier === 'enterprise') && hasFeatureAccess(user.package_tier) ? (
+                                        <button
+                                            onClick={() => setPageType('anniversary')}
+                                            className={`p-2 rounded-lg border-2 transition text-center ${
+                                                pageType === 'anniversary' 
+                                                    ? 'border-rose-500 bg-rose-50' 
+                                                    : 'border-gray-200 hover:border-rose-300'
+                                            }`}
+                                        >
+                                            <div className="text-xl mb-1">💕</div>
+                                            <div className="font-semibold text-gray-700 text-xs">Anniversary</div>
+                                        </button>
+                                    ) : (
+                                        <button
+                                            disabled
+                                            className="p-2 rounded-lg border-2 border-gray-100 bg-gray-50 opacity-60 text-center"
+                                        >
+                                            <div className="text-xl mb-1">💕</div>
+                                            <div className="font-semibold text-gray-400 text-xs">Anniversary</div>
+                                        </button>
+                                    )}
+
+                                    {/* Graduation - Premium and above */}
+                                    {(user?.package_tier === 'premium' || user?.package_tier === 'enterprise') && hasFeatureAccess(user.package_tier) ? (
+                                        <button
+                                            onClick={() => setPageType('graduation')}
+                                            className={`p-2 rounded-lg border-2 transition text-center ${
+                                                pageType === 'graduation' 
+                                                    ? 'border-rose-500 bg-rose-50' 
+                                                    : 'border-gray-200 hover:border-rose-300'
+                                            }`}
+                                        >
+                                            <div className="text-xl mb-1">🎓</div>
+                                            <div className="font-semibold text-gray-700 text-xs">Graduation</div>
+                                        </button>
+                                    ) : (
+                                        <button
+                                            disabled
+                                            className="p-2 rounded-lg border-2 border-gray-100 bg-gray-50 opacity-60 text-center"
+                                        >
+                                            <div className="text-xl mb-1">🎓</div>
+                                            <div className="font-semibold text-gray-400 text-xs">Graduation</div>
+                                        </button>
+                                    )}
+
+                                    {/* Custom - Enterprise only */}
+                                    {user?.package_tier === 'enterprise' && hasFeatureAccess(user.package_tier) ? (
+                                        <button
+                                            onClick={() => setPageType('custom')}
+                                            className={`p-2 rounded-lg border-2 transition text-center ${
+                                                pageType === 'custom' 
+                                                    ? 'border-rose-500 bg-rose-50' 
+                                                    : 'border-gray-200 hover:border-rose-300'
+                                            }`}
+                                        >
+                                            <div className="text-xl mb-1">✨</div>
+                                            <div className="font-semibold text-gray-700 text-xs">Custom</div>
+                                        </button>
+                                    ) : (
+                                        <button
+                                            disabled
+                                            className="p-2 rounded-lg border-2 border-gray-100 bg-gray-50 opacity-60 text-center"
+                                        >
+                                            <div className="text-xl mb-1">✨</div>
+                                            <div className="font-semibold text-gray-400 text-xs">Custom</div>
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Upgrade prompt for restricted access */}
+                                {user?.package_tier === 'free' && (
+                                    <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                                        <p className="text-xs text-blue-700">
+                                            <strong>Upgrade</strong> to unlock more event types! 
+                                            <button 
+                                                onClick={() => { setShowCreateModal(false); navigate('/select-package'); }}
+                                                className="underline font-semibold ml-1"
+                                            >
+                                                View Plans
+                                            </button>
+                                        </p>
+                                    </div>
+                                )}
+                                {user?.package_tier && user?.package_tier !== 'free' && !hasFeatureAccess(user.package_tier) && (
+                                    <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                        <p className="text-xs text-yellow-700">
+                                            <strong>Payment pending:</strong> Features available after confirmation.
+                                        </p>
+                                    </div>
                                 )}
                             </div>
                             <div>
-                                <label className="block text-gray-600 mb-2">Birthday Person's Name</label>
+                                <label className="block text-gray-600 mb-1 text-sm">Event Name</label>
                                 <input
                                     type="text"
                                     value={recipientName}
                                     onChange={(e) => setRecipientName(e.target.value)}
-                                    className="w-full p-3 border-2 border-rose-200 rounded-xl"
+                                    className="w-full p-2 border-2 border-rose-200 rounded-xl text-sm"
                                     placeholder="e.g., Sarah, Mama..."
                                 />
                             </div>
                             <div>
-                                <label className="block text-gray-600 mb-2">Birthday Date</label>
+                                <label className="block text-gray-600 mb-1 text-sm">Event Date</label>
                                 <input
                                     type="date"
                                     value={birthdayDate}
                                     onChange={(e) => setBirthdayDate(e.target.value)}
-                                    className="w-full p-3 border-2 border-rose-200 rounded-xl"
+                                    className="w-full p-2 border-2 border-rose-200 rounded-xl text-sm"
                                 />
                             </div>
                             <div>
-                                <label className="block text-gray-600 mb-2">Package</label>
+                                <label className="block text-gray-600 mb-1 text-sm">Package</label>
                                 <select
                                     value={selectedPackage}
                                     onChange={(e) => setSelectedPackage(e.target.value)}
-                                    className="w-full p-3 border-2 border-rose-200 rounded-xl"
+                                    className="w-full p-2 border-2 border-rose-200 rounded-xl text-sm"
                                     disabled
                                 >
                                     <option value={user?.package_tier || 'free'}>
                                         {user?.package_name?.toUpperCase() || (user?.package_tier || 'Free').toUpperCase()} Plan
                                     </option>
                                 </select>
-                                <p className="text-xs text-gray-500 mt-1">Your package is tied to your account</p>
+                                <p className="text-xs text-gray-500 mt-1">Tied to your account</p>
                             </div>
                         </div>
 
-                        <div className="flex gap-3 mt-6">
+                        <div className="flex gap-2 mt-4">
                             <button
                                 onClick={createBirthdayPage}
-                                className="flex-1 bg-rose-500 text-white py-3 rounded-xl font-semibold"
+                                className="flex-1 bg-rose-500 text-white py-2 px-4 rounded-xl font-semibold text-sm"
                             >
-                                Create
+                                Create {pageType === 'birthday' ? 'Birthday' : pageType === 'wedding' ? 'Wedding' : pageType === 'anniversary' ? 'Anniversary' : pageType === 'graduation' ? 'Graduation' : 'Custom'} Page
                             </button>
                             <button
                                 onClick={() => setShowCreateModal(false)}
-                                className="px-6 bg-gray-200 text-gray-600 py-3 rounded-xl font-semibold"
+                                className="px-4 bg-gray-200 text-gray-600 py-2 rounded-xl font-semibold text-sm"
                             >
                                 Cancel
                             </button>

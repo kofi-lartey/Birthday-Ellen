@@ -133,13 +133,23 @@ function Admin() {
 
     async function confirmPayment(userId, packageTier) {
         try {
+            // Get package name from packages table
+            const { data: packageData } = await supabase
+                .from('packages')
+                .select('name')
+                .eq('tier', packageTier)
+                .single()
+            
+            const packageName = packageData?.name || packageTier
+            
             // Update user payment status
             const { error } = await supabase
                 .from('users')
                 .update({
                     payment_status: 'confirmed',
                     payment_confirmed_at: new Date().toISOString(),
-                    payment_confirmed_by: 'admin'
+                    payment_confirmed_by: 'admin',
+                    package_name: packageName
                 })
                 .eq('id', userId)
 
@@ -317,12 +327,27 @@ function Admin() {
             if (userIndex !== -1) {
                 // Update user's package tier and payment status
                 users[userIndex].package_tier = packageTier
+                users[userIndex].package_name = payment.package_name || packageTier
                 users[userIndex].payment_status = 'confirmed'
                 users[userIndex].payment_confirmed_at = new Date().toISOString()
                 
                 // Save updated users
                 localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users))
                 console.log('User package updated:', users[userIndex])
+            }
+            
+            // Also update in Supabase if available
+            const user = users.find(u => u.email === payment.email)
+            if (user && user.id) {
+                await supabase
+                    .from('users')
+                    .update({
+                        package_tier: packageTier,
+                        package_name: payment.package_name || packageTier,
+                        payment_status: 'confirmed',
+                        payment_confirmed_at: new Date().toISOString()
+                    })
+                    .eq('id', user.id)
             }
             
             // Remove from pending payments

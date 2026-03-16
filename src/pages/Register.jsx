@@ -118,7 +118,13 @@ function Register() {
                             <div className="text-5xl mb-4">✅</div>
                             <h2 className="text-xl font-bold text-gray-700 mb-2">Account Created!</h2>
                             <p className="text-gray-500">We've sent a confirmation email to <strong>{email}</strong>. Please check your inbox and click the confirmation link to activate your account.</p>
-                            <p className="text-gray-500 mt-4">After confirming your email, you can login and select your package.</p>
+                            <p className="text-gray-500 mt-4">After confirming your email, you will be directed to select your subscription package.</p>
+                            <button
+                                onClick={() => navigate('/select-package')}
+                                className="mt-6 bg-gradient-to-r from-rose-500 to-pink-500 text-white px-6 py-3 rounded-xl font-semibold"
+                            >
+                                Continue to Select Package →
+                            </button>
                         </div>
                     ) : (
                         <form onSubmit={handleRegister}>

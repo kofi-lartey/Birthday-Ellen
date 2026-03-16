@@ -240,6 +240,7 @@ function SelectPackage() {
                 .update({
                     package_id: pkg.id,
                     package_tier: pkg.tier,
+                    package_name: pkg.name,
                     payment_status: paymentStatus
                 })
                 .eq('id', user.id)
@@ -282,13 +283,13 @@ function SelectPackage() {
                 }
             }
 
-            // Navigate to dashboard with appropriate message
+            // Navigate to login screen after package selection
             if (pkg.tier === 'free') {
-                alert(`Package set to Free! You now have access to basic features.`)
+                alert(`Package set to Free! You now have access to basic features. Please login to continue.`)
             } else {
-                alert(`Package upgraded to ${pkg.name}! Your payment is pending admin confirmation. You'll have access to basic features until then.`)
+                alert(`Package upgraded to ${pkg.name}! Your payment is pending admin confirmation. You'll have access to basic features until then. Please login to continue.`)
             }
-            navigate('/dashboard')
+            navigate('/login')
 
         } catch (err) {
             console.error('Package selection error:', err)

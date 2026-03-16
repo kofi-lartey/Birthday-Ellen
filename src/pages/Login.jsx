@@ -44,12 +44,16 @@ function Login() {
                     .eq('id', authData.user.id)
                     .single()
 
+                console.log('Login - User data from Supabase:', userData)
+
                 const user = userData || {
                     id: authData.user.id,
                     email: authData.user.email,
                     role: 'user',
                     name: authData.user.email.split('@')[0]
                 }
+
+                console.log('Login - Final user object:', user)
 
                 // Save current user
                 localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user))
