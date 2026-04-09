@@ -33,7 +33,10 @@ function Register() {
             // Register with Supabase Auth
             const { data: authData, error: authError } = await supabase.auth.signUp({
                 email: email.trim().toLowerCase(),
-                password: password
+                password: password,
+                options: {
+                    emailRedirectTo: 'https://birthdaymoment.netlify.app/select-package'
+                }
             })
 
             if (authError) {

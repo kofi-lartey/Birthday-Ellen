@@ -84,19 +84,18 @@ function Login() {
         }
     }
 
-    function handleForgotPassword(e) {
+    async function handleForgotPassword(e) {
         e.preventDefault()
         setResetMessage('')
 
-        const users = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]')
-        const user = users.find(u => u.email === resetEmail.trim().toLowerCase())
+        const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.trim().toLowerCase(), {
+            redirectTo: 'https://birthdaymoment.netlify.app/reset-password'
+        })
 
-        if (user) {
-            // In a real app, this would send an email
-            // For now, show a message
-            setResetMessage('Password reset link has been sent to your email!')
+        if (error) {
+            setResetMessage('Error: ' + error.message)
         } else {
-            setResetMessage('No account found with that email address.')
+            setResetMessage('Password reset link has been sent to your email!')
         }
     }
 
