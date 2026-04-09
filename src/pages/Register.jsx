@@ -31,13 +31,27 @@ function Register() {
 
         try {
             // Register with Supabase Auth
-            const { data: authData, error: authError } = await supabase.auth.signUp({
-                email: email.trim().toLowerCase(),
-                password: password,
-                options: {
-                    emailRedirectTo: 'https://birthdaymoment.netlify.app/select-package'
+            let authData = null
+            let authError = null
+            
+            for (let attempt = 0; attempt < 3; attempt++) {
+                const result = await supabase.auth.signUp({
+                    email: email.trim().toLowerCase(),
+                    password: password,
+                    options: {
+                        emailRedirectTo: 'https://birthdaymoment.netlify.app/auth/callback'
+                    }
+                })
+                
+                authData = result.data
+                authError = result.error
+                
+                if (!authError || !authError.message.includes('429')) {
+                    break
                 }
-            })
+                
+                await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)))
+            }
 
             if (authError) {
                 if (authError.message.includes('429') || authError.message.includes('rate limit')) {
