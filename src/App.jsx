@@ -117,12 +117,9 @@ function ResetPassword() {
 
 function AuthCallback() {
     const navigate = useNavigate()
-    const processed = useRef(false)
+    const [status, setStatus] = useState('loading')
 
     useEffect(() => {
-        if (processed.current) return
-        processed.current = true
-
         const handleAuth = async () => {
             try {
                 const url = new URL(window.location.href)
@@ -134,21 +131,22 @@ function AuthCallback() {
                     
                     if (error) {
                         console.error('Auth callback error:', error)
-                        navigate('/register?error=auth_failed', { replace: true })
+                        setStatus('error')
                         return
                     }
 
                     if (data?.session) {
                         const user = data.session.user
-                        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify({
+                        const userData = {
                             id: user.id,
                             email: user.email,
                             name: user.email.split('@')[0],
                             role: 'user'
-                        }))
+                        }
+                        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(userData))
                     }
 
-                    navigate('/select-package', { replace: true })
+                    setStatus('success')
                     return
                 }
                 
@@ -157,32 +155,41 @@ function AuthCallback() {
                     
                     if (error) {
                         console.error('Auth callback error:', error)
-                        navigate('/register?error=auth_failed', { replace: true })
+                        setStatus('error')
                         return
                     }
 
                     if (session?.user) {
-                        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify({
+                        const userData = {
                             id: session.user.id,
                             email: session.user.email,
                             name: session.user.email.split('@')[0],
                             role: 'user'
-                        }))
+                        }
+                        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(userData))
                     }
 
-                    navigate('/select-package', { replace: true })
+                    setStatus('success')
                     return
                 }
 
-                navigate('/register', { replace: true })
+                setStatus('error')
             } catch (err) {
                 console.error('Auth callback error:', err)
-                navigate('/register', { replace: true })
+                setStatus('error')
             }
         }
 
         handleAuth()
-    }, [navigate])
+    }, [])
+
+    useEffect(() => {
+        if (status === 'success') {
+            navigate('/select-package', { replace: true })
+        } else if (status === 'error') {
+            navigate('/register', { replace: true })
+        }
+    }, [status, navigate])
 
     return (
         <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)' }}>

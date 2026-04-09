@@ -123,25 +123,34 @@ function SelectPackage() {
     const [user, setUser] = useState(null)
 
     useEffect(() => {
-        // Check if user is logged in
-        const currentUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER) || 'null')
-        if (!currentUser) {
-            navigate('/register')
-            return
-        }
-        setUser(currentUser)
-        
-        // Check if this is an upgrade
-        const urlParams = new URLSearchParams(window.location.search)
-        const isUpgrade = urlParams.get('upgrade') === 'true'
-        
-        // Store upgrade status for UI
-        if (isUpgrade) {
-            // This is an upgrade flow - user already has a package
+        const checkUser = () => {
+            const currentUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER) || 'null')
+            
+            if (!currentUser) {
+                const urlParams = new URLSearchParams(window.location.search)
+                const isFromAuth = window.location.pathname === '/auth/callback' || urlParams.has('code')
+                
+                if (isFromAuth) {
+                    setTimeout(checkUser, 500)
+                    return
+                }
+                
+                navigate('/register')
+                return
+            }
+            setUser(currentUser)
+            
+            const urlParams = new URLSearchParams(window.location.search)
+            const isUpgrade = urlParams.get('upgrade') === 'true'
+            
+            if (isUpgrade) {
+                // This is an upgrade flow - user already has a package
+            }
+
+            loadPackages()
         }
 
-        // Load packages from Supabase
-        loadPackages()
+        checkUser()
     }, [navigate])
 
     async function loadPackages() {
