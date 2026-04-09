@@ -124,26 +124,61 @@ function AuthCallback() {
         processed.current = true
 
         const handleAuth = async () => {
-            const { data: { session }, error } = await supabase.auth.getSession()
-            
-            if (session) {
-                const user = session.user
-                localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify({
-                    id: user.id,
-                    email: user.email,
-                    name: user.email.split('@')[0],
-                    role: 'user'
-                }))
-            }
+            try {
+                const url = new URL(window.location.href)
+                const code = url.searchParams.get('code')
+                const hash = url.hash
+                
+                if (code) {
+                    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+                    
+                    if (error) {
+                        console.error('Auth callback error:', error)
+                        navigate('/register?error=auth_failed', { replace: true })
+                        return
+                    }
 
-            const { searchParams } = new URL(window.location.href)
-            const code = searchParams.get('code')
-            
-            if (code) {
-                await supabase.auth.exchangeCodeForSession(code)
-            }
+                    if (data?.session) {
+                        const user = data.session.user
+                        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify({
+                            id: user.id,
+                            email: user.email,
+                            name: user.email.split('@')[0],
+                            role: 'user'
+                        }))
+                    }
 
-            navigate('/select-package', { replace: true })
+                    navigate('/select-package', { replace: true })
+                    return
+                }
+                
+                if (hash && hash.includes('access_token')) {
+                    const { data: { session }, error } = await supabase.auth.getSession()
+                    
+                    if (error) {
+                        console.error('Auth callback error:', error)
+                        navigate('/register?error=auth_failed', { replace: true })
+                        return
+                    }
+
+                    if (session?.user) {
+                        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify({
+                            id: session.user.id,
+                            email: session.user.email,
+                            name: session.user.email.split('@')[0],
+                            role: 'user'
+                        }))
+                    }
+
+                    navigate('/select-package', { replace: true })
+                    return
+                }
+
+                navigate('/register', { replace: true })
+            } catch (err) {
+                console.error('Auth callback error:', err)
+                navigate('/register', { replace: true })
+            }
         }
 
         handleAuth()
@@ -152,7 +187,7 @@ function AuthCallback() {
     return (
         <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)' }}>
             <div className="text-center">
-                <div className="text-4xl mb-4">⏳</div>
+                <div className="text-4xl mb-4 animate-pulse">🎉</div>
                 <p className="text-gray-600">Confirming your account...</p>
             </div>
         </div>

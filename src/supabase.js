@@ -5,7 +5,7 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsIn
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {
     auth: {
-        redirectTo: 'https://birthdaymoment.netlify.app/'
+        redirectTo: 'https://birthdaymoment.netlify.app/auth/callback'
     }
 })
 
