@@ -15,6 +15,7 @@ function Dashboard() {
     const [selectedPackage, setSelectedPackage] = useState('free')
     const [pageType, setPageType] = useState('birthday')
     const [paymentPending, setPaymentPending] = useState(false)
+    const [pendingUpgrade, setPendingUpgrade] = useState(null) // { to_package_tier, ... }
 
     // Helper to check if premium features are unlocked
     const hasFeatureAccess = (tier) => {
@@ -37,64 +38,73 @@ function Dashboard() {
     const [showShareLink, setShowShareLink] = useState(false)
     const [shareLinkCopied, setShareLinkCopied] = useState(false)
 
-    useEffect(() => {
-        // Load orders whenever component mounts or user changes
-        const currentUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER) || 'null')
-        if (!currentUser) {
-            navigate('/login')
-            return
-        }
-        
-        // Check if user has selected a package - redirect if not
-        if (!currentUser.package_tier) {
-            navigate('/select-package')
-            return
-        }
-        
-        // Check if payment is confirmed for paid packages
-        // Only show pending if payment_status is explicitly 'pending' (new selections awaiting confirmation)
-        // Existing users without payment_status are assumed to be confirmed
-        const paymentStatus = currentUser.payment_status
-        if (currentUser.package_tier !== 'free' && paymentStatus === 'pending') {
-            // User has a paid package but payment not confirmed - show pending state
-            setPaymentPending(true)
-        }
-        
-        setUser(currentUser)
+     useEffect(() => {
+         // Load orders whenever component mounts or user changes
+         const currentUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER) || 'null')
+         if (!currentUser) {
+             navigate('/login')
+             return
+         }
+         
+         // Check if user has selected a package - redirect if not
+         if (!currentUser.package_tier) {
+             navigate('/select-package')
+             return
+         }
+         
+         // Check for pending upgrade request
+         // New flow: pending upgrade is stored in package_pending field
+         if (currentUser.package_pending) {
+             setPendingUpgrade({
+                 to_package_tier: currentUser.package_pending,
+                 payment_status: currentUser.payment_status
+             })
+             setPaymentPending(currentUser.payment_status === 'pending')
+         } else {
+             setPendingUpgrade(null)
+             setPaymentPending(false)
+         }
+         
+         setUser(currentUser)
 
-        // Refresh user data from Supabase to get latest payment_status
-        refreshUserFromSupabase(currentUser.id)
+         // Refresh user data from Supabase to get latest status
+         refreshUserFromSupabase(currentUser.id)
 
-        // Load user's orders
-        loadUserOrders(currentUser)
-    }, [navigate])
+         // Load user's orders
+         loadUserOrders(currentUser)
+     }, [navigate])
 
-    // Refresh user data from Supabase
-    async function refreshUserFromSupabase(userId) {
-        try {
-            const { data, error } = await supabase
-                .from('users')
-                .select('*')
-                .eq('id', userId)
-                .single()
-            
-            if (data && !error) {
-                console.log('Dashboard - Refreshed user from Supabase:', data)
-                // Update localStorage with fresh data
-                localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(data))
-                setUser(data)
-                
-                // Update payment pending state
-                if (data.package_tier !== 'free' && data.payment_status === 'pending') {
-                    setPaymentPending(true)
-                } else {
-                    setPaymentPending(false)
-                }
-            }
-        } catch (err) {
-            console.log('Error refreshing user from Supabase:', err)
-        }
-    }
+     // Refresh user data from Supabase
+     async function refreshUserFromSupabase(userId) {
+         try {
+             const { data, error } = await supabase
+                 .from('users')
+                 .select('*')
+                 .eq('id', userId)
+                 .single()
+             
+             if (data && !error) {
+                 console.log('Dashboard - Refreshed user from Supabase:', data)
+                 // Update localStorage with fresh data
+                 localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(data))
+                 setUser(data)
+                 
+                 // Update pending upgrade state based on package_pending field
+                 if (data.package_pending) {
+                     setPendingUpgrade({
+                         to_package_tier: data.package_pending,
+                         payment_status: data.payment_status
+                     })
+                     setPaymentPending(data.payment_status === 'pending')
+                 } else {
+                     setPendingUpgrade(null)
+                     setPaymentPending(false)
+                 }
+             }
+         } catch (err) {
+             console.log('Error refreshing user from Supabase:', err)
+         }
+     }
 
     function loadUserOrders(userOrId) {
         const userId = typeof userOrId === 'object' ? userOrId.id : userOrId
@@ -635,63 +645,78 @@ function Dashboard() {
 
     return (
         <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)' }}>
-            {/* Payment Pending Warning */}
-            {paymentPending && (
-                <div className="bg-yellow-50 border-b-2 border-yellow-400 p-3 md:p-4 fixed top-0 left-0 right-0 z-40">
-                    <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-2 md:gap-4">
-                        <div className="flex items-center gap-2 md:gap-3">
-                            <span className="text-xl md:text-2xl">⏳</span>
-                            <div>
-                                <p className="font-bold text-yellow-800 text-sm md:text-base">Payment Pending Confirmation</p>
-                                <p className="text-xs md:text-sm text-yellow-700">Your {user?.package_tier} package is waiting for admin confirmation. Basic features are available.</p>
-                            </div>
-                        </div>
-                        <button 
-                            onClick={() => window.location.reload()}
-                            className="px-3 md:px-4 py-1.5 md:py-2 bg-yellow-500 text-white rounded-lg font-semibold hover:bg-yellow-600 transition text-sm"
-                        >
-                            Refresh
-                        </button>
-                    </div>
-                </div>
-            )}
+              {/* Payment Pending Warning - Upgrade Request */}
+              {pendingUpgrade && (
+                  <div className="bg-purple-50 border-b-2 border-purple-400 p-3 md:p-4 fixed top-0 left-0 right-0 z-40">
+                      <div className="max-w-4xl mx-auto">
+                          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2 md:gap-4">
+                              <div className="flex items-center gap-2 md:gap-3">
+                                  <span className="text-xl md:text-2xl">⏳</span>
+                                  <div>
+                                      <p className="font-bold text-purple-800 text-sm md:text-base">
+                                          Upgrade Requested: {pendingUpgrade.to_package_tier?.toUpperCase()}
+                                      </p>
+                                      <p className="text-xs md:text-sm text-purple-700">
+                                          Your upgrade is under review. You'll have access to all {pendingUpgrade.to_package_tier} features once confirmed.
+                                      </p>
+                                      {user?.payment_reference_code && (
+                                          <p className="text-xs md:text-sm text-purple-600 mt-1">
+                                              <strong>Reference:</strong> <span className="font-mono bg-purple-100 px-2 py-0.5 rounded">{user.payment_reference_code}</span>
+                                          </p>
+                                      )}
+                                  </div>
+                              </div>
+                              <button 
+                                  onClick={() => window.location.reload()}
+                                  className="px-3 md:px-4 py-1.5 md:py-2 bg-purple-500 text-white rounded-lg font-semibold hover:bg-purple-600 transition text-sm whitespace-nowrap"
+                              >
+                                  Refresh Status
+                              </button>
+                          </div>
+                      </div>
+                  </div>
+              )}
             
-            {/* Header */}
-            <div className={`fixed left-0 right-0 bg-white/80 backdrop-blur-md shadow-sm z-40 ${paymentPending ? 'top-[72px] md:top-[72px]' : 'top-0'}`}>
-                <div className="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                        <button onClick={() => navigate('/')} className="text-rose-500 hover:text-rose-600">
-                            ←
-                        </button>
-                        <h1 className="text-xl font-['Dancing_Script'] text-rose-500">💕 My Dashboard</h1>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        {/* Package Badge in Header */}
-                        {user?.package_tier && (
-                            <div className={`flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 rounded-full text-xs md:text-sm font-semibold 
-                                ${user.package_tier === 'premium' ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white' : 
-                                  user.package_tier === 'enterprise' ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white' :
-                                  user.package_tier === 'basic' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}>
-                                <span>{user.package_name || user.package_tier?.toUpperCase()}</span>
-                                {user.payment_status !== 'confirmed' && user.package_tier !== 'free' && (
-                                    <span className="text-[10px] md:text-xs bg-yellow-500 text-white px-1 rounded animate-pulse flex-shrink-0">!</span>
-                                )}
-                                {user.package_tier !== 'enterprise' && (
-                                    <button 
-                                        onClick={() => navigate('/select-package?upgrade=true')}
-                                        className="text-[10px] md:text-xs opacity-80 hover:opacity-100 underline hidden md:inline"
-                                    >
-                                        Upgrade
-                                    </button>
-                                )}
-                            </div>
-                        )}
-                        <button onClick={logout} className="text-rose-500 text-sm">Logout</button>
-                    </div>
-                </div>
-            </div>
+             {/* Header */}
+             <div className={`fixed left-0 right-0 bg-white/80 backdrop-blur-md shadow-sm z-40 ${pendingUpgrade ? 'top-[72px] md:top-[72px]' : 'top-0'}`}>
+                 <div className="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
+                     <div className="flex items-center gap-3">
+                         <button onClick={() => navigate('/')} className="text-rose-500 hover:text-rose-600">
+                             ←
+                         </button>
+                         <h1 className="text-xl font-['Dancing_Script'] text-rose-500">💕 My Dashboard</h1>
+                     </div>
+                     <div className="flex items-center gap-4">
+                         {/* Package Badge in Header */}
+                         {user?.package_tier && (
+                             <div className={`flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 rounded-full text-xs md:text-sm font-semibold 
+                                 ${user.package_tier === 'premium' ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white' : 
+                                   user.package_tier === 'enterprise' ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white' :
+                                   user.package_tier === 'basic' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}>
+                                 <span>{user.package_name || user.package_tier?.toUpperCase()}</span>
+                                 {pendingUpgrade && (
+                                     <span className="text-[10px] md:text-xs bg-purple-500 text-white px-1 rounded animate-pulse flex-shrink-0">↑</span>
+                                 )}
+                                 {user.payment_status !== 'confirmed' && user.package_tier !== 'free' && !pendingUpgrade && (
+                                     <span className="text-[10px] md:text-xs bg-yellow-500 text-white px-1 rounded animate-pulse flex-shrink-0">!</span>
+                                 )}
+                             </div>
+                         )}
+                         {/* Upgrade button - hidden on mobile, shown on md+ */}
+                         {user?.package_tier && user?.package_tier !== 'enterprise' && (
+                             <button 
+                                 onClick={() => navigate('/select-package?upgrade=true')}
+                                 className="text-[10px] md:text-xs opacity-80 hover:opacity-100 underline hidden md:inline"
+                             >
+                                 Upgrade
+                             </button>
+                         )}
+                         <button onClick={logout} className="text-rose-500 text-sm">Logout</button>
+                     </div>
+                 </div>
+             </div>
 
-            <div className={`px-4 pb-8 max-w-4xl mx-auto ${paymentPending ? 'pt-28' : 'pt-20'}`}>
+             <div className={`px-4 pb-8 max-w-4xl mx-auto ${pendingUpgrade ? 'pt-28' : 'pt-20'}`}>
                 {/* Welcome */}
                 <div className="bg-white rounded-3xl shadow-xl p-6 mb-6">
                     <div className="flex items-center gap-4">

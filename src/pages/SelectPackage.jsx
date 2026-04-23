@@ -223,90 +223,68 @@ function SelectPackage() {
         return icons[tier] || '🎁'
     }
 
-    async function handleSelectPackage(pkg) {
-        setSelectedPackage(pkg)
-        setIsLoading(true)
-        setError('')
+     async function handleSelectPackage(pkg) {
+         setSelectedPackage(pkg)
+         setIsLoading(true)
+         setError('')
 
-        try {
-            // For paid packages, payment needs admin confirmation
-            const paymentStatus = pkg.tier === 'free' ? 'confirmed' : 'pending'
-            
-            // Update user in localStorage with package info
-            const updatedUser = {
-                ...user,
-                package_id: pkg.id,
-                package_tier: pkg.tier,
-                package_name: pkg.name,
-                payment_status: paymentStatus,
-                package_expires_at: null // Free tier doesn't expire
-            }
-            localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedUser))
+         try {
+             // Free tier - activate immediately
+             if (pkg.tier === 'free') {
+                 await activateFreePackage(pkg)
+                 setIsLoading(false)
+                 navigate('/login')
+                 return
+             }
 
-            // Update user in Supabase
-            const { error: updateError } = await supabase
-                .from('users')
-                .update({
-                    package_id: pkg.id,
-                    package_tier: pkg.tier,
-                    package_name: pkg.name,
-                    payment_status: paymentStatus
-                })
-                .eq('id', user.id)
+             // Paid tier - redirect to payment details page
+             // Don't change package yet - only after admin approval
+             navigate(`/payment-details?package=${pkg.tier}&packageId=${pkg.id}&price=${pkg.price}&currency=${pkg.currency || 'USD'}`)
 
-            if (updateError) {
-                console.log('Error updating user package:', updateError.message)
-            }
+         } catch (err) {
+             console.error('Package selection error:', err)
+             setError('Failed to process selection. Please try again.')
+         }
 
-            // For paid packages, add to pending payments for admin verification
-            if (pkg.tier !== 'free') {
-                // Add to pending_payments in localStorage for admin to review
-                const pendingPayments = JSON.parse(localStorage.getItem('pending_payments') || '[]')
-                pendingPayments.push({
-                    id: Date.now().toString(),
-                    user_id: user.id,
-                    name: user.name || user.email,
-                    email: user.email,
-                    phone: user.phone || '',
-                    package_tier: pkg.tier,
-                    package_name: pkg.name,
-                    amount: pkg.price,
-                    created_at: new Date().toISOString()
-                })
-                localStorage.setItem('pending_payments', JSON.stringify(pendingPayments))
-                
-                // Record the user package selection
-                await supabase.from('user_packages').insert([{
-                    user_id: user.id,
-                    package_id: pkg.id,
-                    is_active: false // Not active until payment confirmed
-                }])
-            } else {
-                // Record the user package selection for free tier
-                if (pkg.tier === 'free') {
-                    await supabase.from('user_packages').insert([{
-                        user_id: user.id,
-                        package_id: pkg.id,
-                        is_active: true
-                    }])
-                }
-            }
+         setIsLoading(false)
+     }
 
-            // Navigate to login screen after package selection
-            if (pkg.tier === 'free') {
-                alert(`Package set to Free! You now have access to basic features. Please login to continue.`)
-            } else {
-                alert(`Package upgraded to ${pkg.name}! Your payment is pending admin confirmation. You'll have access to basic features until then. Please login to continue.`)
-            }
-            navigate('/login')
+     async function activateFreePackage(pkg) {
+         // Update user in localStorage and Supabase for free tier
+         const updatedUser = {
+             ...user,
+             package_id: pkg.id,
+             package_tier: pkg.tier,
+             package_name: pkg.name,
+             payment_status: 'confirmed',
+             package_expires_at: null
+         }
+         localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedUser))
 
-        } catch (err) {
-            console.error('Package selection error:', err)
-            setError('Failed to select package. Please try again.')
-        }
+         // Update user in Supabase
+         const { error: updateError } = await supabase
+             .from('users')
+             .update({
+                 package_id: pkg.id,
+                 package_tier: pkg.tier,
+                 package_name: pkg.name,
+                 payment_status: 'confirmed',
+                 package_pending: null
+             })
+             .eq('id', user.id)
 
-        setIsLoading(false)
-    }
+         // Record free package activation
+         await supabase.from('user_packages').insert([{
+             user_id: user.id,
+             package_id: pkg.id,
+             is_active: true,
+             payment_status: 'confirmed'
+         }])
+
+         if (updateError) {
+             console.log('Error updating user package:', updateError.message)
+         }
+     }
 
     function FeatureItem({ available, text, icon }) {
         return (

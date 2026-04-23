@@ -202,7 +202,273 @@ CREATE POLICY "Allow anon read user_packages" ON user_packages FOR SELECT TO ano
 CREATE POLICY "Allow public insert user_packages" ON user_packages FOR INSERT TO public WITH CHECK (true);
 CREATE POLICY "Allow anon insert user_packages" ON user_packages FOR INSERT TO anon WITH CHECK (true);
 
--- =====================
--- ADD PAGE TYPE COLUMN TO ORDERS
--- =====================
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS page_type TEXT DEFAULT 'birthday';
+ -- =====================
+ -- ADD PAGE TYPE COLUMN TO ORDERS
+ -- =====================
+ ALTER TABLE orders ADD COLUMN IF NOT EXISTS page_type TEXT DEFAULT 'birthday';
+
+ -- =====================
+ -- CREATE UPGRADE_REQUESTS TABLE
+ -- =====================
+ CREATE TABLE IF NOT EXISTS upgrade_requests (
+     id SERIAL PRIMARY KEY,
+     user_id TEXT NOT NULL,
+     user_email TEXT NOT NULL,
+     user_name TEXT,
+     
+     -- Package change details
+     from_package_tier TEXT DEFAULT 'free',
+     to_package_tier TEXT NOT NULL,
+     to_package_id INTEGER REFERENCES packages(id),
+     
+     -- Payment details
+     amount_paid DECIMAL(10,2) NOT NULL,
+     payment_method TEXT, -- 'momo', 'bank', 'card'
+     momo_number TEXT,
+     transaction_id TEXT,
+     payment_reference_code TEXT UNIQUE, -- e.g., B2476, P1234
+     payment_proof_url TEXT,
+     
+     -- Status tracking
+     status TEXT DEFAULT 'pending', -- 'pending', 'approved', 'rejected'
+     notes TEXT,
+     
+     -- Approval metadata
+     reviewed_by TEXT,
+     reviewed_at TIMESTAMP WITH TIME ZONE,
+     approved_at TIMESTAMP WITH TIME ZONE,
+     
+     -- Timestamps
+     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+ );
+
+ -- Enable RLS
+ ALTER TABLE upgrade_requests ENABLE ROW LEVEL SECURITY;
+
+ -- Drop existing policies
+ DROP POLICY IF EXISTS "Users read own upgrade requests" ON upgrade_requests;
+ DROP POLICY IF EXISTS "Admin manage upgrade requests" ON upgrade_requests;
+
+ -- Policies: Users can read their own (cast auth.uid() to text for comparison)
+ CREATE POLICY "Users read own upgrade requests" ON upgrade_requests 
+     FOR SELECT TO public USING (
+         auth.uid()::text = user_id 
+         OR user_id = current_setting('app.current_user_id', true)
+     );
+     
+ CREATE POLICY "Admin manage upgrade requests" ON upgrade_requests 
+     FOR ALL TO authenticated USING (
+         EXISTS (
+             SELECT 1 FROM users 
+             WHERE id::text = auth.uid()::text 
+             AND role IN ('admin', 'super_admin')
+         )
+     );
+
+  -- Indexes for performance
+  CREATE INDEX IF NOT EXISTS idx_upgrade_requests_user_id ON upgrade_requests(user_id);
+  CREATE INDEX IF NOT EXISTS idx_upgrade_requests_status ON upgrade_requests(status);
+  CREATE INDEX IF NOT EXISTS idx_upgrade_requests_pending ON upgrade_requests(status) WHERE status = 'pending';
+  CREATE INDEX IF NOT EXISTS idx_upgrade_requests_ref_code ON upgrade_requests(payment_reference_code);
+
+ -- =====================
+ -- ADD MISSING COLUMNS (for existing tables)
+ -- =====================
+ -- Add payment_reference_code to upgrade_requests if not exists
+ ALTER TABLE upgrade_requests ADD COLUMN IF NOT EXISTS payment_reference_code TEXT UNIQUE;
+ 
+   -- Add package_pending and pending_upgrade_id to users if not exists
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS package_pending TEXT;
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_upgrade_id INTEGER REFERENCES upgrade_requests(id);
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_reference_code TEXT;
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_method TEXT;
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_reference TEXT;
+
+ -- =====================
+ -- CREATE NOTIFICATIONS TABLE
+ -- =====================
+ CREATE TABLE IF NOT EXISTS notifications (
+     id SERIAL PRIMARY KEY,
+     recipient_id TEXT NOT NULL, -- Admin user ID
+     type TEXT NOT NULL, -- 'upgrade_pending', 'upgrade_approved', 'upgrade_rejected'
+     title TEXT NOT NULL,
+     message TEXT NOT NULL,
+     data JSONB, -- {user_id, user_name, user_email, tier, amount, reference_code, ...}
+     read BOOLEAN DEFAULT false,
+     read_at TIMESTAMP WITH TIME ZONE,
+     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+ );
+
+ -- Enable RLS
+ ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+ -- Drop existing policies
+ DROP POLICY IF EXISTS "Admin read own notifications" ON notifications;
+ DROP POLICY IF EXISTS "Admin insert notifications" ON notifications;
+
+ -- Admin can read their own notifications
+ CREATE POLICY "Admin read own notifications" ON notifications 
+     FOR SELECT TO authenticated USING (
+         auth.uid()::text = recipient_id OR
+         EXISTS (
+             SELECT 1 FROM users 
+             WHERE id::text = auth.uid()::text 
+             AND role IN ('admin', 'super_admin')
+         )
+     );
+     
+ CREATE POLICY "Admin insert notifications" ON notifications 
+     FOR INSERT TO authenticated WITH CHECK (
+         EXISTS (
+             SELECT 1 FROM users 
+             WHERE id::text = auth.uid()::text 
+             AND role IN ('admin', 'super_admin')
+         )
+     );
+
+  -- Indexes
+  CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(recipient_id);
+  CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(read) WHERE read = false;
+  CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
+
+  -- Temporarily disable RLS for admin access (remove in production)
+  ALTER TABLE upgrade_requests DISABLE ROW LEVEL SECURITY;
+  ALTER TABLE notifications DISABLE ROW LEVEL SECURITY;
+
+ -- =====================
+ -- TRIGGERS FOR NOTIFICATIONS
+ -- =====================
+
+ -- Trigger function: Create notification when upgrade request is submitted
+ CREATE OR REPLACE FUNCTION notify_upgrade_request()
+ RETURNS TRIGGER AS $$
+ DECLARE
+     admin_user RECORD;
+ BEGIN
+     -- Notify all admin users
+     FOR admin_user IN 
+         SELECT id, email, name FROM users WHERE role IN ('admin', 'super_admin')
+     LOOP
+         INSERT INTO notifications (
+             recipient_id,
+             type,
+             title,
+             message,
+             data,
+             created_at
+         ) VALUES (
+             admin_user.id,
+             'upgrade_pending',
+             '🚀 New Upgrade Request',
+             format('User %s has requested to upgrade from %s to %s package (GHS %.2f). Reference: %s',
+                 COALESCE(NEW.user_name, NEW.user_email),
+                 COALESCE(NEW.from_package_tier, 'free'),
+                 NEW.to_package_tier,
+                 NEW.amount_paid,
+                 COALESCE(NEW.payment_reference_code, 'N/A')
+             ),
+             jsonb_build_object(
+                 'user_id', NEW.user_id,
+                 'user_name', NEW.user_name,
+                 'user_email', NEW.user_email,
+                 'from_tier', NEW.from_package_tier,
+                 'to_tier', NEW.to_package_tier,
+                 'amount', NEW.amount_paid,
+                 'reference_code', NEW.payment_reference_code,
+                 'upgrade_request_id', NEW.id,
+                 'transaction_id', NEW.transaction_id,
+                 'payment_method', NEW.payment_method
+             ),
+             NOW()
+         );
+     END LOOP;
+     RETURN NEW;
+ END;
+ $$ LANGUAGE plpgsql;
+
+ DROP TRIGGER IF EXISTS trigger_notify_upgrade_request ON upgrade_requests;
+ CREATE TRIGGER trigger_notify_upgrade_request
+     AFTER INSERT ON upgrade_requests
+     FOR EACH ROW
+     EXECUTE FUNCTION notify_upgrade_request();
+
+ -- Trigger function: Notify user when upgrade is approved
+ CREATE OR REPLACE FUNCTION notify_upgrade_approved()
+ RETURNS TRIGGER AS $$
+ BEGIN
+     IF NEW.status = 'approved' AND OLD.status != 'approved' THEN
+         INSERT INTO notifications (
+             recipient_id,
+             type,
+             title,
+             message,
+             data,
+             created_at
+         ) VALUES (
+             NEW.user_id,
+             'upgrade_approved',
+             '✅ Upgrade Approved!',
+             format('Your upgrade to %s package has been approved. Enjoy your new features!', NEW.to_package_tier),
+             jsonb_build_object(
+                 'user_id', NEW.user_id,
+                 'to_tier', NEW.to_package_tier,
+                 'upgrade_request_id', NEW.id,
+                 'approved_by', NEW.reviewed_by,
+                 'approved_at', NEW.approved_at
+             ),
+             NOW()
+         );
+     END IF;
+     RETURN NEW;
+ END;
+ $$ LANGUAGE plpgsql;
+
+ DROP TRIGGER IF EXISTS trigger_notify_upgrade_approved ON upgrade_requests;
+ CREATE TRIGGER trigger_notify_upgrade_approved
+     AFTER UPDATE ON upgrade_requests
+     FOR EACH ROW
+     WHEN (OLD.status IS DISTINCT FROM NEW.status)
+     EXECUTE FUNCTION notify_upgrade_approved();
+
+ -- Trigger function: Notify user when upgrade is rejected
+ CREATE OR REPLACE FUNCTION notify_upgrade_rejected()
+ RETURNS TRIGGER AS $$
+ BEGIN
+     IF NEW.status = 'rejected' AND OLD.status != 'rejected' THEN
+         INSERT INTO notifications (
+             recipient_id,
+             type,
+             title,
+             message,
+             data,
+             created_at
+         ) VALUES (
+             NEW.user_id,
+             'upgrade_rejected',
+             '❌ Upgrade Request Rejected',
+             format('Your upgrade to %s package could not be approved. Reason: %s. Contact admin for more info.',
+                 NEW.to_package_tier,
+                 COALESCE(NEW.notes, 'Not specified')
+             ),
+             jsonb_build_object(
+                 'user_id', NEW.user_id,
+                 'to_tier', NEW.to_package_tier,
+                 'upgrade_request_id', NEW.id,
+                 'rejected_by', NEW.reviewed_by,
+                 'reason', NEW.notes
+             ),
+             NOW()
+         );
+     END IF;
+     RETURN NEW;
+ END;
+ $$ LANGUAGE plpgsql;
+
+ DROP TRIGGER IF EXISTS trigger_notify_upgrade_rejected ON upgrade_requests;
+ CREATE TRIGGER trigger_notify_upgrade_rejected
+     AFTER UPDATE ON upgrade_requests
+     FOR EACH ROW
+     WHEN (OLD.status IS DISTINCT FROM NEW.status)
+     EXECUTE FUNCTION notify_upgrade_rejected();
+
