@@ -10,49 +10,76 @@ function Slideshow() {
     const [showTitle, setShowTitle] = useState(true)
     const [showDownload, setShowDownload] = useState(false)
     const [downloadImage, setDownloadImage] = useState('')
+    const [downloadSlideIndex, setDownloadSlideIndex] = useState(0)
     const [isRecording, setIsRecording] = useState(false)
     const [recordingProgress, setRecordingProgress] = useState(0)
     const [musicPlaying, setMusicPlaying] = useState(false)
+    const [audioInitialized, setAudioInitialized] = useState(false)
+    const [isBulkDownloading, setIsBulkDownloading] = useState(false)
+    const [bulkDownloadProgress, setBulkDownloadProgress] = useState(0)
     const [orderConfig, setOrderConfig] = useState(null)
     const intervalRef = useRef(null)
     const progressRef = useRef(null)
     const musicRef = useRef(null)
 
-    // Load order config if code exists
-    useEffect(() => {
-        if (code) {
-            loadOrderConfig()
-            loadOrderSlides()
-        }
-    }, [code])
+     // Load order config if code exists
+     useEffect(() => {
+         if (code) {
+             loadOrderConfig()
+             loadOrderSlides()
+         }
+     }, [code])
 
-    async function loadOrderConfig() {
-        // Check localStorage first
-        const orders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]')
-        const localOrder = orders.find(o => o.code.toLowerCase() === code?.toLowerCase())
+      // Normalize localStorage order format to match Supabase schema
+      function normalizeOrder(order) {
+          if (!order) return order
+          // Check if order has camelCase fields (from Dashboard localStorage)
+          // Dashboard stores: audioUrl, recipientName, birthdayDate, backgroundImage, heartMessage, dateOfBirth
+          // Supabase uses: audio_url, recipient_name, birthday_date, background_image, heart_message, date_of_birth
+          if (order.audioUrl !== undefined || order.recipientName !== undefined) {
+              return {
+                  ...order,
+                  audio_url: order.audioUrl ?? order.audio_url ?? order.birthdayDetails?.audioUrl,
+                  recipient_name: order.recipientName ?? order.recipient_name,
+                  nickname: order.nickname ?? order.birthdayDetails?.nickname,
+                  background_image: order.backgroundImage ?? order.background_image ?? order.birthdayDetails?.backgroundImage,
+                  heart_message: order.heartMessage ?? order.heart_message ?? order.birthdayDetails?.heartMessage,
+                  date_of_birth: order.dateOfBirth ?? order.date_of_birth ?? order.birthdayDetails?.dateOfBirth,
+                  letter: order.letter ?? order.birthdayDetails?.letter,
+                  photos: order.photos ?? order.birthdayDetails?.photos ?? []
+              }
+          }
+          return order
+      }
 
-        if (localOrder) {
-            setOrderConfig(localOrder)
-            return
-        }
+     async function loadOrderConfig() {
+         // Check localStorage first
+         const orders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]')
+         const localOrder = orders.find(o => o.code.toLowerCase() === code?.toLowerCase())
 
-        // Check Supabase
-        try {
-            const { data, error } = await supabase
-                .from('orders')
-                .select('*')
-                .eq('code', code)
-                .limit(1);
+         if (localOrder) {
+             const normalized = normalizeOrder(localOrder)
+             setOrderConfig(normalized)
+             return
+         }
 
-            if (data && data.length > 0) {
-                setOrderConfig(data[0]);
-            } else if (error) {
-                console.log('Supabase orders table not available');
-            }
-        } catch (err) {
-            console.log('Supabase not available');
-        }
-    }
+         // Check Supabase
+         try {
+             const { data, error } = await supabase
+                 .from('orders')
+                 .select('*')
+                 .eq('code', code)
+                 .limit(1);
+
+             if (data && data.length > 0) {
+                 setOrderConfig(data[0]);
+             } else if (error) {
+                 console.log('Supabase orders table not available');
+             }
+         } catch (err) {
+             console.log('Supabase not available');
+         }
+     }
 
     function loadOrderSlides() {
         // First try to load from Supabase
@@ -105,35 +132,49 @@ function Slideshow() {
         }
     }
 
-    useEffect(() => {
-        if (!code) {
-            loadSlides()
-        }
-        createHearts()
+     // Initialize audio element on mount (without playing)
+     useEffect(() => {
+         if (orderConfig?.audio_url && !musicRef.current) {
+             try {
+                 const musicUrl = orderConfig.audio_url
+                 musicRef.current = new Audio(musicUrl)
+                 musicRef.current.loop = true
+                 musicRef.current.volume = 0.3
+                 setAudioInitialized(true)
+             } catch (err) {
+                 console.log('Failed to initialize audio:', err)
+             }
+         }
+     }, [orderConfig])
 
-        // Show title briefly then hide
-        const titleTimer = setTimeout(() => {
-            setShowTitle(false)
-        }, 4000)
+     useEffect(() => {
+         if (!code) {
+             loadSlides()
+         }
+         createHearts()
 
-        // Auto-play music when slideshow loads
-        setTimeout(() => {
-            toggleMusic()
-        }, 1000)
+         // Show title briefly then hide
+         const titleTimer = setTimeout(() => {
+             setShowTitle(false)
+         }, 4000)
 
-        return () => {
-            clearTimeout(titleTimer)
-            if (intervalRef.current) {
-                clearInterval(intervalRef.current)
-            }
-            if (progressRef.current) {
-                clearInterval(progressRef.current)
-            }
-            if (musicRef.current) {
-                musicRef.current.pause()
-            }
-        }
-    }, [])
+         // Don't auto-play music due to browser restrictions - user must click play button
+         // Music element is pre-initialized above if audio_url exists
+
+         return () => {
+             clearTimeout(titleTimer)
+             if (intervalRef.current) {
+                 clearInterval(intervalRef.current)
+             }
+             if (progressRef.current) {
+                 clearInterval(progressRef.current)
+             }
+             if (musicRef.current) {
+                 musicRef.current.pause()
+                 musicRef.current = null
+             }
+         }
+     }, [code])
 
     useEffect(() => {
         if (isPlaying && slides.length > 0) {
@@ -237,141 +278,191 @@ function Slideshow() {
         setIsPlaying(!isPlaying)
     }
 
-    function toggleMusic() {
-        // Create audio if not exists
-        if (!musicRef.current) {
-            const musicUrl = orderConfig?.audio_url || ''
-            if (musicUrl) {
-                musicRef.current = new Audio(musicUrl)
-                musicRef.current.loop = true
-                musicRef.current.volume = 0.3
-            }
-        }
+     function toggleMusic() {
+         // If audio not initialized yet, try to initialize now
+         if (!musicRef.current && orderConfig?.audio_url) {
+             try {
+                 const musicUrl = orderConfig.audio_url
+                 musicRef.current = new Audio(musicUrl)
+                 musicRef.current.loop = true
+                 musicRef.current.volume = 0.3
+                 setAudioInitialized(true)
+             } catch (err) {
+                 console.log('Failed to create audio element:', err)
+                 return
+             }
+         }
 
-        if (musicPlaying) {
-            musicRef.current?.pause()
-            setMusicPlaying(false)
-        } else {
-            musicRef.current?.play().then(() => {
-                setMusicPlaying(true)
-            }).catch((error) => {
-                console.log('Music play error:', error)
-            })
-        }
-    }
+         if (!musicRef.current) {
+             console.log('No audio URL configured')
+             return
+         }
+
+         if (musicPlaying) {
+             musicRef.current.pause()
+             setMusicPlaying(false)
+         } else {
+             musicRef.current.play().then(() => {
+                 setMusicPlaying(true)
+             }).catch((error) => {
+                 console.log('Music play error (browser may block autoplay):', error)
+                 // Don't set musicPlaying as true since play failed
+             })
+         }
+     }
 
     function goBack() {
         window.location.href = '/'
     }
 
-    function openDownloadModal() {
-        if (slides[currentIndex]) {
-            setDownloadImage(slides[currentIndex].photo)
-            setShowDownload(true)
-        }
-    }
+     function openDownloadModal() {
+         if (slides[currentIndex]) {
+             setDownloadImage(slides[currentIndex].photo)
+             setDownloadSlideIndex(currentIndex)
+             setShowDownload(true)
+         }
+     }
 
     function closeDownloadModal() {
         setShowDownload(false)
         setDownloadImage('')
     }
 
-    // Download Image with glassmorphism card
-    async function downloadImageFile() {
-        const currentSlide = slides[currentIndex]
-        const imageUrl = currentSlide.photo
+     // Download single image
+     async function downloadImageFile() {
+         const imageUrl = downloadImage
 
-        const canvas = document.createElement('canvas')
-        const ctx = canvas.getContext('2d')
-        const img = new Image()
-        img.crossOrigin = 'anonymous'
+         if (!imageUrl) {
+             alert("No image available to download")
+             return
+         }
 
-        await new Promise((resolve) => {
-            img.onload = resolve
-            img.onerror = resolve
-            img.src = imageUrl
-        })
+         await downloadImageWithOverlay(imageUrl, code ? `birthday-${code}-slide-${downloadSlideIndex + 1}.jpg` : `birthday-slide-${downloadSlideIndex + 1}.jpg`)
+     }
 
-        if (!img.width) {
-            alert("Image failed to load. Try again.")
-            return
-        }
+     // Download all images as separate files
+     async function downloadAllImages() {
+         if (slides.length === 0) return
 
-        canvas.width = img.width
-        canvas.height = img.height
-        ctx.drawImage(img, 0, 0)
+         setIsBulkDownloading(true)
+         setBulkDownloadProgress(0)
 
-        const padding = canvas.width * 0.05
-        const boxWidth = canvas.width * 0.85
-        const boxX = (canvas.width - boxWidth) / 2
-        const nameFontSize = canvas.width * 0.055
-        const messageFontSize = canvas.width * 0.04
-        const lineHeight = messageFontSize * 1.5
+         try {
+             for (let i = 0; i < slides.length; i++) {
+                 const slide = slides[i]
+                 const filename = code ? `birthday-${code}-slide-${i + 1}.jpg` : `birthday-slide-${i + 1}.jpg`
 
-        ctx.textAlign = "center"
-        ctx.textBaseline = "top"
+                 await downloadImageWithOverlay(slide.photo, filename, true)
 
-        function wrapText(text, maxWidth) {
-            const words = text.split(" ")
-            let lines = [], line = ""
-            for (let word of words) {
-                const testLine = line + word + " "
-                if (ctx.measureText(testLine).width > maxWidth && line !== "") {
-                    lines.push(line.trim())
-                    line = word + " "
-                } else line = testLine
-            }
-            lines.push(line.trim())
-            return lines
-        }
+                 setBulkDownloadProgress(Math.round(((i + 1) / slides.length) * 100))
+             }
+         } finally {
+             setIsBulkDownloading(false)
+             setBulkDownloadProgress(0)
+         }
+     }
 
-        ctx.font = `${messageFontSize}px Outfit, sans-serif`
-        const messageLines = wrapText(currentSlide.message, boxWidth - padding * 2)
-        const boxHeight = padding + nameFontSize + padding / 2 + messageLines.length * lineHeight + padding
-        const boxY = canvas.height - boxHeight - canvas.width * 0.05
-        const radius = canvas.width * 0.03
+     // Helper: Download a single image with text overlay (no alert on failure, just log)
+     async function downloadImageWithOverlay(imageUrl, filename, silent = false) {
+         return new Promise((resolve) => {
+             const canvas = document.createElement('canvas')
+             const ctx = canvas.getContext('2d')
+             const img = new Image()
+             img.crossOrigin = 'anonymous'
 
-        // Gradient background
-        const gradient = ctx.createLinearGradient(boxX, boxY, boxX, boxY + boxHeight)
-        gradient.addColorStop(0, "rgba(236,72,153,0.9)")
-        gradient.addColorStop(1, "rgba(244,63,94,0.9)")
-        ctx.fillStyle = gradient
+             img.onload = () => {
+                 canvas.width = img.width
+                 canvas.height = img.height
+                 ctx.drawImage(img, 0, 0)
 
-        // Rounded rectangle
-        ctx.beginPath()
-        ctx.moveTo(boxX + radius, boxY)
-        ctx.lineTo(boxX + boxWidth - radius, boxY)
-        ctx.quadraticCurveTo(boxX + boxWidth, boxY, boxX + boxWidth, boxY + radius)
-        ctx.lineTo(boxX + boxWidth, boxY + boxHeight - radius)
-        ctx.quadraticCurveTo(boxX + boxWidth, boxY + boxHeight, boxX + boxWidth - radius, boxY + boxHeight)
-        ctx.lineTo(boxX + radius, boxY + boxHeight)
-        ctx.quadraticCurveTo(boxX, boxY + boxHeight, boxX, boxY + boxHeight - radius)
-        ctx.lineTo(boxX, boxY + radius)
-        ctx.quadraticCurveTo(boxX, boxY, boxX + radius, boxY)
-        ctx.closePath()
-        ctx.fill()
+                 const padding = canvas.width * 0.05
+                 const boxWidth = canvas.width * 0.85
+                 const boxX = (canvas.width - boxWidth) / 2
+                 const nameFontSize = canvas.width * 0.055
+                 const messageFontSize = canvas.width * 0.04
+                 const lineHeight = messageFontSize * 1.5
 
-        // Name
-        ctx.fillStyle = "#fff"
-        ctx.font = `bold ${nameFontSize}px Outfit, sans-serif`
-        ctx.fillText(currentSlide.name, canvas.width / 2, boxY + padding)
+                 ctx.textAlign = "center"
+                 ctx.textBaseline = "top"
 
-        // Message
-        ctx.font = `${messageFontSize}px Outfit, sans-serif`
-        let startY = boxY + padding + nameFontSize + padding / 2
-        messageLines.forEach(line => {
-            ctx.fillText(line, canvas.width / 2, startY)
-            startY += lineHeight
-        })
+                 function wrapText(text, maxWidth) {
+                     const words = text.split(" ")
+                     let lines = [], line = ""
+                     for (let word of words) {
+                         const testLine = line + word + " "
+                         if (ctx.measureText(testLine).width > maxWidth && line !== "") {
+                             lines.push(line.trim())
+                             line = word + " "
+                         } else line = testLine
+                     }
+                     lines.push(line.trim())
+                     return lines
+                 }
 
-        canvas.toBlob(blob => {
-            if (!blob) { alert("Download failed."); return }
-            const link = document.createElement("a")
-            link.href = URL.createObjectURL(blob)
-            link.download = code ? `birthday-${code}.jpg` : `birthday-${currentIndex + 1}.jpg`
-            link.click()
-        }, "image/jpeg", 0.95)
-    }
+                 // Determine which slide data to use
+                 const slideData = slides.find(s => s.photo === imageUrl) || { name: 'Memory', message: 'A special moment' }
+
+                 ctx.font = `${messageFontSize}px Outfit, sans-serif`
+                 const messageLines = wrapText(slideData.message, boxWidth - padding * 2)
+                 const boxHeight = padding + nameFontSize + padding / 2 + messageLines.length * lineHeight + padding
+                 const boxY = canvas.height - boxHeight - canvas.width * 0.05
+                 const radius = canvas.width * 0.03
+
+                 // Gradient background
+                 const gradient = ctx.createLinearGradient(boxX, boxY, boxX, boxY + boxHeight)
+                 gradient.addColorStop(0, "rgba(236,72,153,0.9)")
+                 gradient.addColorStop(1, "rgba(244,63,94,0.9)")
+                 ctx.fillStyle = gradient
+
+                 // Rounded rectangle
+                 ctx.beginPath()
+                 ctx.moveTo(boxX + radius, boxY)
+                 ctx.lineTo(boxX + boxWidth - radius, boxY)
+                 ctx.quadraticCurveTo(boxX + boxWidth, boxY, boxX + boxWidth, boxY + radius)
+                 ctx.lineTo(boxX + boxWidth, boxY + boxHeight - radius)
+                 ctx.quadraticCurveTo(boxX + boxWidth, boxY + boxHeight, boxX + boxWidth - radius, boxY + boxHeight)
+                 ctx.lineTo(boxX + radius, boxY + boxHeight)
+                 ctx.quadraticCurveTo(boxX, boxY + boxHeight, boxX, boxY + boxHeight - radius)
+                 ctx.lineTo(boxX, boxY + radius)
+                 ctx.quadraticCurveTo(boxX, boxY, boxX + radius, boxY)
+                 ctx.closePath()
+                 ctx.fill()
+
+                 // Name
+                 ctx.fillStyle = "#fff"
+                 ctx.font = `bold ${nameFontSize}px Outfit, sans-serif`
+                 ctx.fillText(slideData.name, canvas.width / 2, boxY + padding)
+
+                 // Message
+                 ctx.font = `${messageFontSize}px Outfit, sans-serif`
+                 let startY = boxY + padding + nameFontSize + padding / 2
+                 messageLines.forEach(line => {
+                     ctx.fillText(line, canvas.width / 2, startY)
+                     startY += lineHeight
+                 })
+
+                 canvas.toBlob(blob => {
+                     if (!blob) {
+                         if (!silent) alert("Download failed.")
+                         resolve()
+                         return
+                     }
+                     const link = document.createElement("a")
+                     link.href = URL.createObjectURL(blob)
+                     link.download = filename
+                     link.click()
+                     resolve()
+                 }, "image/jpeg", 0.95)
+             }
+
+             img.onerror = () => {
+                 if (!silent) alert("Image failed to load. Try again.")
+                 resolve()
+             }
+
+             img.src = imageUrl
+         })
+     }
 
     // Export Video
     async function exportVideo() {
@@ -883,10 +974,19 @@ function Slideshow() {
                         </svg>
                     )}
                 </button>
-                <button className="fab" onClick={openDownloadModal} title="Download">
+                <button className="fab" onClick={openDownloadModal} title="Download Current Slide">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-6 h-6">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
+                </button>
+                <button className="fab" onClick={downloadAllImages} disabled={isBulkDownloading} title="Download All Images">
+                    {isBulkDownloading ? (
+                        <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-6 h-6">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                    )}
                 </button>
                 <button className="fab" onClick={exportVideo} disabled={isRecording} title="Export Video">
                     {isRecording ? (
@@ -916,6 +1016,21 @@ function Slideshow() {
                             <div className="h-full bg-gradient-to-r from-pink-500 to-rose-500 transition-all duration-200" style={{ width: `${recordingProgress}%` }} />
                         </div>
                         <p className="text-gray-400 mt-2">{recordingProgress}%</p>
+                        <p className="text-gray-500 text-sm mt-2">Please don't close this tab</p>
+                    </div>
+                </div>
+            )}
+
+            {/* Bulk Download Progress Overlay */}
+            {isBulkDownloading && (
+                <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center">
+                    <div className="text-center">
+                        <div className="text-6xl mb-4">📦</div>
+                        <p className="text-white text-2xl mb-4">Downloading all images...</p>
+                        <div className="w-64 h-4 bg-gray-700 rounded-full overflow-hidden">
+                            <div className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-all duration-200" style={{ width: `${bulkDownloadProgress}%` }} />
+                        </div>
+                        <p className="text-gray-400 mt-2">{bulkDownloadProgress}%</p>
                         <p className="text-gray-500 text-sm mt-2">Please don't close this tab</p>
                     </div>
                 </div>
