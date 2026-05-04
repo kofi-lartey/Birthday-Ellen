@@ -31,7 +31,7 @@ ALTER TABLE user_packages ADD COLUMN IF NOT EXISTS payment_currency TEXT DEFAULT
 -- =====================
 CREATE TABLE IF NOT EXISTS payments (
     id SERIAL PRIMARY KEY,
-    user_id TEXT NOT NULL,
+    user_id INTEGER NOT NULL REFERENCES users(id),
     package_id INTEGER REFERENCES packages(id),
     amount DECIMAL(10,2) NOT NULL,
     currency TEXT DEFAULT 'USD',
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS payments (
     payment_reference TEXT,
     status TEXT DEFAULT 'pending', -- 'pending', 'confirmed', 'rejected', 'refunded'
     notes TEXT,
-    confirmed_by TEXT,
+    confirmed_by INTEGER,
     confirmed_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -56,7 +56,7 @@ DROP POLICY IF EXISTS "Allow admin manage payments" ON payments;
 CREATE POLICY "Allow public read payments" ON payments FOR SELECT TO public USING (true);
 CREATE POLICY "Allow anon read payments" ON payments FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow admin manage payments" ON payments FOR ALL TO authenticated USING (
-    EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role IN ('admin', 'super_admin'))
+    EXISTS (SELECT 1 FROM users WHERE id::text = auth.uid()::text AND role IN ('admin', 'super_admin'))
 );
 
 -- =====================

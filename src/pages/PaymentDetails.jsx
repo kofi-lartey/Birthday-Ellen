@@ -18,6 +18,7 @@ function PaymentDetails() {
     const [searchParams] = useSearchParams()
     const selectedPackageTier = searchParams.get('package') || 'basic'
     const price = searchParams.get('price') || '0'
+    const selectedPackageId = Number.isInteger(Number(searchParams.get('packageId'))) ? Number(searchParams.get('packageId')) : null
     
     const [user, setUser] = useState(null)
     const [paymentMethod, setPaymentMethod] = useState('momo')
@@ -70,7 +71,7 @@ function PaymentDetails() {
 
         try {
             // Create upgrade request with reference code
-            const { error: insertError } = await supabase
+            const { error: insertError, data: insertedRequest } = await supabase
                 .from('upgrade_requests')
                 .insert([{
                     user_id: user.id,
@@ -78,7 +79,7 @@ function PaymentDetails() {
                     user_name: user.name || user.email,
                     from_package_tier: user.package_tier || 'free',
                     to_package_tier: selectedPackageTier,
-                    to_package_id: parseInt(searchParams.get('packageId') || '0'),
+                    to_package_id: selectedPackageId,
                     amount_paid: parseFloat(amountPaid),
                     payment_method: paymentMethod,
                     momo_number: paymentMethod === 'momo' ? momoNumber : null,
@@ -88,6 +89,7 @@ function PaymentDetails() {
                     notes: notes,
                     status: 'pending'
                 }])
+                .select('id')  // Get the inserted ID
 
             if (insertError) {
                 console.error('Upgrade request error:', insertError)
@@ -97,23 +99,54 @@ function PaymentDetails() {
                 return
             }
 
-            // Update user's pending status
+            // Get the inserted request ID
+            const requestId = insertedRequest?.[0]?.id
+
+            // Update user's pending status AND link to upgrade request
+            const updateData = {
+                package_pending: selectedPackageTier,
+                payment_status: 'pending',
+                payment_method: paymentMethod,
+                payment_reference: paymentReference,
+                payment_reference_code: paymentReference
+            }
+            
+            // Only set pending_upgrade_id if we got a request ID
+            if (requestId) {
+                updateData.pending_upgrade_id = requestId
+            }
+
             await supabase
                 .from('users')
-                .update({
-                    package_pending: selectedPackageTier,
-                    payment_status: 'pending',
-                    payment_method: paymentMethod,
-                    payment_reference: paymentReference,
-                    payment_reference_code: paymentReference
-                })
+                .update(updateData)
                 .eq('id', user.id)
 
-            // Update localStorage
+            // Also add to localStorage's pending_payments for Admin "Payments" tab (legacy fallback)
+            const paymentRecord = {
+                id: requestId || Date.now(),
+                user_id: user.id,
+                email: user.email,
+                name: user.name || user.email,
+                package_tier: selectedPackageTier,
+                package_name: PACKAGE_NAMES[selectedPackageTier],
+                amount: parseFloat(amountPaid),
+                payment_method: paymentMethod,
+                payment_reference_code: paymentReference,
+                transaction_id: transactionId,
+                momo_number: momoNumber,
+                status: 'pending',
+                created_at: new Date().toISOString()
+            }
+            const pendingPayments = JSON.parse(localStorage.getItem('pending_payments') || '[]')
+            pendingPayments.push(paymentRecord)
+            localStorage.setItem('pending_payments', JSON.stringify(pendingPayments))
+
+            // Update localStorage current user
             const updatedUser = {
                 ...user,
                 package_pending: selectedPackageTier,
-                payment_status: 'pending'
+                payment_status: 'pending',
+                pending_upgrade_id: requestId
             }
             localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedUser))
 
@@ -130,13 +163,13 @@ function PaymentDetails() {
     function saveToLocalStorage() {
         const upgradeRequests = JSON.parse(localStorage.getItem('pending_upgrades') || '[]')
         upgradeRequests.push({
-            id: Date.now().toString(),
+            id: `local-${Date.now()}`,
             user_id: user.id,
             user_email: user.email,
             user_name: user.name || user.email,
             from_package_tier: user.package_tier || 'free',
             to_package_tier: selectedPackageTier,
-            to_package_id: parseInt(searchParams.get('packageId') || '0'),
+            to_package_id: selectedPackageId,
             amount_paid: parseFloat(amountPaid),
             payment_method: paymentMethod,
             momo_number: momoNumber,
@@ -145,7 +178,8 @@ function PaymentDetails() {
             payment_proof_url: paymentProof,
             notes: notes,
             status: 'pending',
-            requested_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            isLocalFallback: true
         })
         localStorage.setItem('pending_upgrades', JSON.stringify(upgradeRequests))
     }

@@ -10,17 +10,18 @@ function Dashboard() {
     const [showCreateModal, setShowCreateModal] = useState(false)
     const [showDetailsModal, setShowDetailsModal] = useState(false)
     const [selectedOrder, setSelectedOrder] = useState(null)
+    const [selectedOrderForGift, setSelectedOrderForGift] = useState(null)
+    const [showGiftOptions, setShowGiftOptions] = useState(false)
     const [recipientName, setRecipientName] = useState('')
     const [birthdayDate, setBirthdayDate] = useState('')
     const [selectedPackage, setSelectedPackage] = useState('free')
     const [pageType, setPageType] = useState('birthday')
     const [paymentPending, setPaymentPending] = useState(false)
-    const [pendingUpgrade, setPendingUpgrade] = useState(null) // { to_package_tier, ... }
+    const [pendingUpgrade, setPendingUpgrade] = useState(null)
 
     // Helper to check if premium features are unlocked
     const hasFeatureAccess = (tier) => {
         if (!tier || tier === 'free') return false
-        // Check if payment is confirmed
         if (user?.payment_status !== 'confirmed') return false
         return true
     }
@@ -38,108 +39,83 @@ function Dashboard() {
     const [showShareLink, setShowShareLink] = useState(false)
     const [shareLinkCopied, setShareLinkCopied] = useState(false)
 
-     useEffect(() => {
-         // Load orders whenever component mounts or user changes
-         const currentUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER) || 'null')
-         if (!currentUser) {
-             navigate('/login')
-             return
-         }
-         
-         // Check if user has selected a package - redirect if not
-         if (!currentUser.package_tier) {
-             navigate('/select-package')
-             return
-         }
-         
-         // Check for pending upgrade request
-         // New flow: pending upgrade is stored in package_pending field
-         if (currentUser.package_pending) {
-             setPendingUpgrade({
-                 to_package_tier: currentUser.package_pending,
-                 payment_status: currentUser.payment_status
-             })
-             setPaymentPending(currentUser.payment_status === 'pending')
-         } else {
-             setPendingUpgrade(null)
-             setPaymentPending(false)
-         }
-         
-         setUser(currentUser)
+    useEffect(() => {
+        const currentUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER) || 'null')
+        if (!currentUser) {
+            navigate('/login')
+            return
+        }
 
-         // Refresh user data from Supabase to get latest status
-         refreshUserFromSupabase(currentUser.id)
+        if (!currentUser.package_tier) {
+            navigate('/select-package')
+            return
+        }
 
-         // Load user's orders
-         loadUserOrders(currentUser)
-     }, [navigate])
+        if (currentUser.package_pending) {
+            setPendingUpgrade({
+                to_package_tier: currentUser.package_pending,
+                payment_status: currentUser.payment_status
+            })
+            setPaymentPending(currentUser.payment_status === 'pending')
+        } else {
+            setPendingUpgrade(null)
+            setPaymentPending(false)
+        }
 
-     // Refresh user data from Supabase
-     async function refreshUserFromSupabase(userId) {
-         try {
-             const { data, error } = await supabase
-                 .from('users')
-                 .select('*')
-                 .eq('id', userId)
-                 .single()
-             
-             if (data && !error) {
-                 console.log('Dashboard - Refreshed user from Supabase:', data)
-                 // Update localStorage with fresh data
-                 localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(data))
-                 setUser(data)
-                 
-                 // Update pending upgrade state based on package_pending field
-                 if (data.package_pending) {
-                     setPendingUpgrade({
-                         to_package_tier: data.package_pending,
-                         payment_status: data.payment_status
-                     })
-                     setPaymentPending(data.payment_status === 'pending')
-                 } else {
-                     setPendingUpgrade(null)
-                     setPaymentPending(false)
-                 }
-             }
-         } catch (err) {
-             console.log('Error refreshing user from Supabase:', err)
-         }
-     }
+        setUser(currentUser)
+        refreshUserFromSupabase(currentUser.id)
+        loadUserOrders(currentUser)
+    }, [navigate])
+
+    async function refreshUserFromSupabase(userId) {
+        try {
+            const { data, error } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id', userId)
+                .single()
+
+            if (data && !error) {
+                console.log('Dashboard - Refreshed user from Supabase:', data)
+                localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(data))
+                setUser(data)
+
+                if (data.package_pending) {
+                    setPendingUpgrade({
+                        to_package_tier: data.package_pending,
+                        payment_status: data.payment_status
+                    })
+                    setPaymentPending(data.payment_status === 'pending')
+                } else {
+                    setPendingUpgrade(null)
+                    setPaymentPending(false)
+                }
+            }
+        } catch (err) {
+            console.log('Error refreshing user from Supabase:', err)
+        }
+    }
 
     function loadUserOrders(userOrId) {
         const userId = typeof userOrId === 'object' ? userOrId.id : userOrId
-        
-        // Load orders from localStorage and filter by user
         const allOrders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]')
-        console.log('=== Loading all orders from localStorage:', allOrders.length)
         
-        // Filter localStorage orders by userId
         const filteredLocalOrders = allOrders.filter(order =>
-            !order.userId || // Orders without user_id
-            order.userId === userId || // Orders created by this user
-            (order.giverPhone && user && order.giverPhone === user.phone) // Match by phone
+            !order.userId ||
+            order.userId === userId ||
+            (order.giverPhone && user && order.giverPhone === user.phone)
         )
-        console.log('=== Filtered local orders:', filteredLocalOrders.length)
         setOrders(filteredLocalOrders)
-
-        // Also try to load from Supabase
         loadFromSupabase(userId)
     }
 
     async function loadFromSupabase(userId) {
         try {
-            // DEBUG: Log the current user ID
-            console.log('=== DEBUG: Current user ID:', userId)
-            console.log('=== DEBUG: Current user:', user)
-
             const { data, error } = await supabase
                 .from('orders')
                 .select('*')
 
             if (data && data.length > 0) {
-                console.log('Loaded orders from Supabase:', data)
-
-                // Convert Supabase format to localStorage format
                 const convertedOrders = data.map(order => ({
                     id: order.id,
                     userId: order.user_id,
@@ -161,20 +137,13 @@ function Dashboard() {
                     createdAt: order.created_at
                 }))
 
-                // Update localStorage with Supabase data
                 localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(convertedOrders))
 
-                // DEBUG: Log converted orders
-                console.log('=== DEBUG: Converted orders:', convertedOrders)
-                console.log('=== DEBUG: Checking filter - userId:', userId)
-
-                // Filter for current user - show orders that belong to this user
                 const supabaseUserOrders = convertedOrders.filter(o =>
-                    !o.userId || // Show orders without user_id (backwards compatibility)
-                    o.userId === userId || // Orders created by this user
-                    (o.giverPhone && user && o.giverPhone === user.phone) // Match by phone number
+                    !o.userId ||
+                    o.userId === userId ||
+                    (o.giverPhone && user && o.giverPhone === user.phone)
                 )
-                console.log('=== DEBUG: Filtered orders:', supabaseUserOrders)
                 setOrders(supabaseUserOrders)
             }
         } catch (err) {
@@ -187,7 +156,6 @@ function Dashboard() {
         navigate('/')
     }
 
-    // Sync all local orders to Supabase
     async function syncToSupabase() {
         const allOrders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]')
         let synced = 0
@@ -230,7 +198,6 @@ function Dashboard() {
         }
 
         alert(`Synced ${synced} orders to Supabase. ${failed} failed.`)
-        // Reload orders
         loadUserOrders(user)
     }
 
@@ -251,7 +218,6 @@ function Dashboard() {
 
         const userTier = user?.package_tier || 'free'
 
-        // Check page type access based on package
         const allowedPageTypes = {
             free: ['birthday'],
             basic: ['birthday', 'wedding'],
@@ -263,7 +229,6 @@ function Dashboard() {
             return
         }
 
-        // Check page limit based on package
         const maxPagesPerTier = {
             free: 1,
             basic: 3,
@@ -277,7 +242,6 @@ function Dashboard() {
         }
 
         const code = generateCode()
-        console.log('Creating order with user:', user)
 
         const newOrder = {
             id: Date.now(),
@@ -290,7 +254,6 @@ function Dashboard() {
             price: user?.package_tier === 'premium' ? 10 : (user?.package_tier === 'basic' ? 5 : 0),
             status: user?.package_tier === 'free' ? 'active' : 'pending',
             createdAt: new Date().toISOString(),
-            // Birthday details
             birthdayDetails: {
                 backgroundImage: '',
                 heartMessage: 'My heart belongs to you',
@@ -302,14 +265,10 @@ function Dashboard() {
             }
         }
 
-        console.log('New order:', newOrder)
-
         const allOrders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]')
         allOrders.push(newOrder)
         localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(allOrders))
-        console.log('Saved to localStorage, total orders:', allOrders.length)
 
-        // Also save to Supabase
         try {
             const { error: supabaseError } = await supabase.from('orders').insert([{
                 code: code,
@@ -338,11 +297,9 @@ function Dashboard() {
         setSelectedPackage('free')
         setPageType('birthday')
 
-        // Show success message and stay on dashboard
         alert(`Birthday page created! Code: ${code}\n\nShare this link with ${recipientName}:\n${window.location.origin}/birthday/${code}`)
     }
 
-    // Get max photos based on tier
     function getMaxPhotos(packageType) {
         const tier = packageType || user?.package_tier || 'free'
         const maxPhotosPerTier = {
@@ -354,7 +311,6 @@ function Dashboard() {
         return maxPhotosPerTier[tier] || 5
     }
 
-    // Open birthday details modal
     function openBirthdayDetails(order) {
         setSelectedOrder(order)
         setBirthdayDetails(order.birthdayDetails || {
@@ -369,7 +325,6 @@ function Dashboard() {
         setShowDetailsModal(true)
     }
 
-    // Save birthday details
     async function saveBirthdayDetails() {
         if (!selectedOrder) return
 
@@ -380,7 +335,6 @@ function Dashboard() {
             return o
         })
 
-        // Update localStorage
         const allOrders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]')
         const updatedAllOrders = allOrders.map(o => {
             if (o.code === selectedOrder.code) {
@@ -390,13 +344,8 @@ function Dashboard() {
         })
         localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(updatedAllOrders))
 
-        // Save to Supabase - try update first, then insert if needed
         try {
-            console.log('=== DEBUG: Attempting to save order to Supabase ===')
-            console.log('Order code:', selectedOrder.code)
-
-            // First try to update - this will work if the order already exists
-            const { data, error, count } = await supabase
+            const { error } = await supabase
                 .from('orders')
                 .update({
                     user_id: user?.id,
@@ -411,102 +360,9 @@ function Dashboard() {
                 })
                 .eq('code', selectedOrder.code)
 
-            console.log('Update result - error:', error)
-            console.log('Update result - data:', data)
-            console.log('Update result - count:', count)
-
-            // Check if update was successful (either data returned or count > 0)
             if (error) {
                 console.log('Supabase update error:', error.message)
-                // Try inserting instead - but handle duplicate key gracefully
-                const { data: insertData, error: insertError } = await supabase
-                    .from('orders')
-                    .insert([{
-                        user_id: user?.id,
-                        code: selectedOrder.code,
-                        recipient_name: selectedOrder.recipientName,
-                        birthday_date: selectedOrder.birthdayDate,
-                        package: selectedOrder.package,
-                        status: selectedOrder.status,
-                        background_image: birthdayDetails.backgroundImage,
-                        heart_message: birthdayDetails.heartMessage,
-                        date_of_birth: birthdayDetails.dateOfBirth,
-                        letter: birthdayDetails.letter,
-                        nickname: birthdayDetails.nickname,
-                        audio_url: birthdayDetails.audioUrl,
-                        photos: JSON.stringify(birthdayDetails.photos),
-                        created_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                    }])
-
-                console.log('Insert result - error:', insertError)
-                console.log('Insert result - data:', insertData)
-
-                if (insertError) {
-                    // Check if it's a duplicate key error - order might already exist from another session
-                    if (insertError.code === '23505') {
-                        console.log('Order already exists, trying to update with user_id...')
-                        // Try update again - this time it should work
-                        const { data: updateData, error: updateError } = await supabase
-                            .from('orders')
-                            .update({
-                                user_id: user?.id,
-                                background_image: birthdayDetails.backgroundImage,
-                                heart_message: birthdayDetails.heartMessage,
-                                date_of_birth: birthdayDetails.dateOfBirth,
-                                letter: birthdayDetails.letter,
-                                nickname: birthdayDetails.nickname,
-                                audio_url: birthdayDetails.audioUrl,
-                                photos: JSON.stringify(birthdayDetails.photos),
-                                updated_at: new Date().toISOString()
-                            })
-                            .eq('code', selectedOrder.code)
-
-                        if (updateError) {
-                            console.log('Supabase update error:', updateError.message)
-                        } else {
-                            console.log('Updated existing order with user_id!', updateData)
-                        }
-                    } else {
-                        console.log('Supabase insert error:', insertError.message)
-                    }
-                } else {
-                    console.log('Saved to Supabase via insert!')
-                }
-            } else if (count === 0) {
-                // Update returned no error but no rows affected - order doesn't exist, do insert
-                console.log('No rows updated - order does NOT exist, doing INSERT...')
-                const { data: insertData, error: insertError } = await supabase
-                    .from('orders')
-                    .insert([{
-                        user_id: user?.id,
-                        code: selectedOrder.code,
-                        recipient_name: selectedOrder.recipientName,
-                        birthday_date: selectedOrder.birthdayDate,
-                        package: selectedOrder.package,
-                        status: selectedOrder.status,
-                        background_image: birthdayDetails.backgroundImage,
-                        heart_message: birthdayDetails.heartMessage,
-                        date_of_birth: birthdayDetails.dateOfBirth,
-                        letter: birthdayDetails.letter,
-                        nickname: birthdayDetails.nickname,
-                        audio_url: birthdayDetails.audioUrl,
-                        photos: JSON.stringify(birthdayDetails.photos),
-                        created_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                    }])
-
-                console.log('Insert result - error:', insertError)
-                console.log('Insert result - data:', insertData)
-
-                if (insertError) {
-                    console.log('Supabase insert error:', insertError.message)
-                    alert('Error: ' + insertError.message)
-                } else {
-                    console.log('INSERTED new order to Supabase!', insertData)
-                }
             } else {
-                // Update was successful
                 console.log('Updated order successfully in Supabase!')
             }
         } catch (err) {
@@ -518,7 +374,6 @@ function Dashboard() {
         alert('Birthday details saved successfully!')
     }
 
-    // Handle photo upload with tagging
     async function handlePhotoUpload(e) {
         const files = Array.from(e.target.files)
         if (!files.length) return
@@ -531,7 +386,6 @@ function Dashboard() {
             return
         }
 
-        // Check file size (max 5MB)
         for (const file of files) {
             if (file.size > 5 * 1024 * 1024) {
                 alert('Each photo must be less than 5MB')
@@ -539,7 +393,6 @@ function Dashboard() {
             }
         }
 
-        // Upload to Cloudinary with tag
         const tag = selectedOrder?.recipientName?.toLowerCase().replace(/\s+/g, '') || 'birthday'
         const uploadedUrls = []
 
@@ -555,11 +408,10 @@ function Dashboard() {
                 })
                 const data = await res.json()
                 if (data.secure_url) {
-                    // Add tag to the image in Cloudinary
                     uploadedUrls.push({
                         url: data.secure_url,
                         publicId: data.public_id,
-                        tag: tag // Tag for tracking
+                        tag: tag
                     })
                 }
             } catch (err) {
@@ -575,19 +427,16 @@ function Dashboard() {
         }
     }
 
-    // Remove photo
     function removePhoto(index) {
         const newPhotos = [...birthdayDetails.photos]
         newPhotos.splice(index, 1)
         setBirthdayDetails({ ...birthdayDetails, photos: newPhotos })
     }
 
-    // Upload background image to Cloudinary
     async function handleBackgroundImageUpload(e) {
         const file = e.target.files[0]
         if (!file) return
 
-        // Check file size (max 5MB)
         if (file.size > 5 * 1024 * 1024) {
             alert('Image must be less than 5MB')
             return
@@ -611,12 +460,10 @@ function Dashboard() {
         }
     }
 
-    // Upload background music to Cloudinary
     async function handleAudioUpload(e) {
         const file = e.target.files[0]
         if (!file) return
 
-        // Check file size (max 10MB)
         if (file.size > 10 * 1024 * 1024) {
             alert('Audio must be less than 10MB')
             return
@@ -625,7 +472,7 @@ function Dashboard() {
         const formData = new FormData()
         formData.append('file', file)
         formData.append('upload_preset', 'ml_default')
-        formData.append('resource_type', 'video') // Cloudinary uses video API for audio
+        formData.append('resource_type', 'video')
 
         try {
             const res = await fetch(`https://api.cloudinary.com/v1_1/djjgkezui/video/upload`, {
@@ -645,78 +492,76 @@ function Dashboard() {
 
     return (
         <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)' }}>
-              {/* Payment Pending Warning - Upgrade Request */}
-              {pendingUpgrade && (
-                  <div className="bg-purple-50 border-b-2 border-purple-400 p-3 md:p-4 fixed top-0 left-0 right-0 z-40">
-                      <div className="max-w-4xl mx-auto">
-                          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2 md:gap-4">
-                              <div className="flex items-center gap-2 md:gap-3">
-                                  <span className="text-xl md:text-2xl">⏳</span>
-                                  <div>
-                                      <p className="font-bold text-purple-800 text-sm md:text-base">
-                                          Upgrade Requested: {pendingUpgrade.to_package_tier?.toUpperCase()}
-                                      </p>
-                                      <p className="text-xs md:text-sm text-purple-700">
-                                          Your upgrade is under review. You'll have access to all {pendingUpgrade.to_package_tier} features once confirmed.
-                                      </p>
-                                      {user?.payment_reference_code && (
-                                          <p className="text-xs md:text-sm text-purple-600 mt-1">
-                                              <strong>Reference:</strong> <span className="font-mono bg-purple-100 px-2 py-0.5 rounded">{user.payment_reference_code}</span>
-                                          </p>
-                                      )}
-                                  </div>
-                              </div>
-                              <button 
-                                  onClick={() => window.location.reload()}
-                                  className="px-3 md:px-4 py-1.5 md:py-2 bg-purple-500 text-white rounded-lg font-semibold hover:bg-purple-600 transition text-sm whitespace-nowrap"
-                              >
-                                  Refresh Status
-                              </button>
-                          </div>
-                      </div>
-                  </div>
-              )}
-            
-             {/* Header */}
-             <div className={`fixed left-0 right-0 bg-white/80 backdrop-blur-md shadow-sm z-40 ${pendingUpgrade ? 'top-[72px] md:top-[72px]' : 'top-0'}`}>
-                 <div className="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
-                     <div className="flex items-center gap-3">
-                         <button onClick={() => navigate('/')} className="text-rose-500 hover:text-rose-600">
-                             ←
-                         </button>
-                         <h1 className="text-xl font-['Dancing_Script'] text-rose-500">💕 My Dashboard</h1>
-                     </div>
-                     <div className="flex items-center gap-4">
-                         {/* Package Badge in Header */}
-                         {user?.package_tier && (
-                             <div className={`flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 rounded-full text-xs md:text-sm font-semibold 
-                                 ${user.package_tier === 'premium' ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white' : 
-                                   user.package_tier === 'enterprise' ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white' :
-                                   user.package_tier === 'basic' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}>
-                                 <span>{user.package_name || user.package_tier?.toUpperCase()}</span>
-                                 {pendingUpgrade && (
-                                     <span className="text-[10px] md:text-xs bg-purple-500 text-white px-1 rounded animate-pulse flex-shrink-0">↑</span>
-                                 )}
-                                 {user.payment_status !== 'confirmed' && user.package_tier !== 'free' && !pendingUpgrade && (
-                                     <span className="text-[10px] md:text-xs bg-yellow-500 text-white px-1 rounded animate-pulse flex-shrink-0">!</span>
-                                 )}
-                             </div>
-                         )}
-                         {/* Upgrade button - hidden on mobile, shown on md+ */}
-                         {user?.package_tier && user?.package_tier !== 'enterprise' && (
-                             <button 
-                                 onClick={() => navigate('/select-package?upgrade=true')}
-                                 className="text-[10px] md:text-xs opacity-80 hover:opacity-100 underline hidden md:inline"
-                             >
-                                 Upgrade
-                             </button>
-                         )}
-                         <button onClick={logout} className="text-rose-500 text-sm">Logout</button>
-                     </div>
-                 </div>
-             </div>
+            {/* Payment Pending Warning - Upgrade Request */}
+            {pendingUpgrade && (
+                <div className="bg-purple-50 border-b-2 border-purple-400 p-3 md:p-4 fixed top-0 left-0 right-0 z-40">
+                    <div className="max-w-4xl mx-auto">
+                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2 md:gap-4">
+                            <div className="flex items-center gap-2 md:gap-3">
+                                <span className="text-xl md:text-2xl">⏳</span>
+                                <div>
+                                    <p className="font-bold text-purple-800 text-sm md:text-base">
+                                        Upgrade Requested: {pendingUpgrade.to_package_tier?.toUpperCase()}
+                                    </p>
+                                    <p className="text-xs md:text-sm text-purple-700">
+                                        Your upgrade is under review. You'll have access to all {pendingUpgrade.to_package_tier} features once confirmed.
+                                    </p>
+                                    {user?.payment_reference_code && (
+                                        <p className="text-xs md:text-sm text-purple-600 mt-1">
+                                            <strong>Reference:</strong> <span className="font-mono bg-purple-100 px-2 py-0.5 rounded">{user.payment_reference_code}</span>
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => window.location.reload()}
+                                className="px-3 md:px-4 py-1.5 md:py-2 bg-purple-500 text-white rounded-lg font-semibold hover:bg-purple-600 transition text-sm whitespace-nowrap"
+                            >
+                                Refresh Status
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
-             <div className={`px-4 pb-8 max-w-4xl mx-auto ${pendingUpgrade ? 'pt-28' : 'pt-20'}`}>
+            {/* Header */}
+            <div className={`fixed left-0 right-0 bg-white/80 backdrop-blur-md shadow-sm z-40 ${pendingUpgrade ? 'top-[72px] md:top-[72px]' : 'top-0'}`}>
+                <div className="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                        <button onClick={() => navigate('/')} className="text-rose-500 hover:text-rose-600">
+                            ←
+                        </button>
+                        <h1 className="text-xl font-['Dancing_Script'] text-rose-500">💕 My Dashboard</h1>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        {user?.package_tier && (
+                            <div className={`flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 rounded-full text-xs md:text-sm font-semibold 
+                                 ${user.package_tier === 'premium' ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white' :
+                                    user.package_tier === 'enterprise' ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white' :
+                                        user.package_tier === 'basic' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}>
+                                <span>{user.package_name || user.package_tier?.toUpperCase()}</span>
+                                {pendingUpgrade && (
+                                    <span className="text-[10px] md:text-xs bg-purple-500 text-white px-1 rounded animate-pulse flex-shrink-0">↑</span>
+                                )}
+                                {user.payment_status !== 'confirmed' && user.package_tier !== 'free' && !pendingUpgrade && (
+                                    <span className="text-[10px] md:text-xs bg-yellow-500 text-white px-1 rounded animate-pulse flex-shrink-0">!</span>
+                                )}
+                            </div>
+                        )}
+                        {user?.package_tier && user?.package_tier !== 'enterprise' && (
+                            <button
+                                onClick={() => navigate('/select-package?upgrade=true')}
+                                className="text-[10px] md:text-xs opacity-80 hover:opacity-100 underline hidden md:inline"
+                            >
+                                Upgrade
+                            </button>
+                        )}
+                        <button onClick={logout} className="text-rose-500 text-sm">Logout</button>
+                    </div>
+                </div>
+            </div>
+
+            <div className={`px-4 pb-8 max-w-4xl mx-auto ${pendingUpgrade ? 'pt-28' : 'pt-20'}`}>
                 {/* Welcome */}
                 <div className="bg-white rounded-3xl shadow-xl p-6 mb-6">
                     <div className="flex items-center gap-4">
@@ -759,7 +604,6 @@ function Dashboard() {
                             {orders.map((order, index) => (
                                 <div key={index} className="bg-gradient-to-br from-rose-50 to-pink-50 p-5 rounded-2xl border border-rose-100 hover:shadow-lg transition-all">
                                     <div className="flex items-start gap-4">
-                                        {/* Avatar */}
                                         <div className="w-14 h-14 rounded-full bg-gradient-to-br from-rose-400 to-pink-500 flex items-center justify-center text-white text-xl font-bold shadow-md">
                                             {order.recipientName.charAt(0).toUpperCase()}
                                         </div>
@@ -808,6 +652,15 @@ function Dashboard() {
                                         >
                                             🎬 Slideshow
                                         </Link>
+                                        <button
+                                            onClick={() => {
+                                                setSelectedOrderForGift(order)
+                                                setShowGiftOptions(true)
+                                            }}
+                                            className="text-xs bg-yellow-500 text-white px-3 py-2 rounded-full hover:bg-yellow-600 transition"
+                                        >
+                                            🎁 Send Gift
+                                        </button>
                                     </div>
                                 </div>
                             ))}
@@ -826,31 +679,26 @@ function Dashboard() {
                             {/* Page Type Selection - Navigation Menu */}
                             <div>
                                 <label className="block text-gray-600 mb-1 font-semibold text-sm">Select Event Type</label>
-                                
-                                {/* Page Type Navigation Menu/List */}
+
                                 <div className="grid grid-cols-3 gap-2">
-                                    {/* Birthday - Available to all */}
                                     <button
                                         onClick={() => setPageType('birthday')}
-                                        className={`p-2 rounded-lg border-2 transition text-center ${
-                                            pageType === 'birthday' 
-                                                ? 'border-rose-500 bg-rose-50' 
+                                        className={`p-2 rounded-lg border-2 transition text-center ${pageType === 'birthday'
+                                                ? 'border-rose-500 bg-rose-50'
                                                 : 'border-gray-200 hover:border-rose-300'
-                                        }`}
+                                            }`}
                                     >
                                         <div className="text-xl mb-1">🎂</div>
                                         <div className="font-semibold text-gray-700 text-xs">Birthday</div>
                                     </button>
 
-                                    {/* Wedding - Basic and above */}
                                     {(user?.package_tier === 'basic' || user?.package_tier === 'premium' || user?.package_tier === 'enterprise') && hasFeatureAccess(user.package_tier) ? (
                                         <button
                                             onClick={() => setPageType('wedding')}
-                                            className={`p-2 rounded-lg border-2 transition text-center ${
-                                                pageType === 'wedding' 
-                                                    ? 'border-rose-500 bg-rose-50' 
+                                            className={`p-2 rounded-lg border-2 transition text-center ${pageType === 'wedding'
+                                                    ? 'border-rose-500 bg-rose-50'
                                                     : 'border-gray-200 hover:border-rose-300'
-                                            }`}
+                                                }`}
                                         >
                                             <div className="text-xl mb-1">💒</div>
                                             <div className="font-semibold text-gray-700 text-xs">Wedding</div>
@@ -865,15 +713,13 @@ function Dashboard() {
                                         </button>
                                     )}
 
-                                    {/* Anniversary - Premium and above */}
                                     {(user?.package_tier === 'premium' || user?.package_tier === 'enterprise') && hasFeatureAccess(user.package_tier) ? (
                                         <button
                                             onClick={() => setPageType('anniversary')}
-                                            className={`p-2 rounded-lg border-2 transition text-center ${
-                                                pageType === 'anniversary' 
-                                                    ? 'border-rose-500 bg-rose-50' 
+                                            className={`p-2 rounded-lg border-2 transition text-center ${pageType === 'anniversary'
+                                                    ? 'border-rose-500 bg-rose-50'
                                                     : 'border-gray-200 hover:border-rose-300'
-                                            }`}
+                                                }`}
                                         >
                                             <div className="text-xl mb-1">💕</div>
                                             <div className="font-semibold text-gray-700 text-xs">Anniversary</div>
@@ -888,15 +734,13 @@ function Dashboard() {
                                         </button>
                                     )}
 
-                                    {/* Graduation - Premium and above */}
                                     {(user?.package_tier === 'premium' || user?.package_tier === 'enterprise') && hasFeatureAccess(user.package_tier) ? (
                                         <button
                                             onClick={() => setPageType('graduation')}
-                                            className={`p-2 rounded-lg border-2 transition text-center ${
-                                                pageType === 'graduation' 
-                                                    ? 'border-rose-500 bg-rose-50' 
+                                            className={`p-2 rounded-lg border-2 transition text-center ${pageType === 'graduation'
+                                                    ? 'border-rose-500 bg-rose-50'
                                                     : 'border-gray-200 hover:border-rose-300'
-                                            }`}
+                                                }`}
                                         >
                                             <div className="text-xl mb-1">🎓</div>
                                             <div className="font-semibold text-gray-700 text-xs">Graduation</div>
@@ -911,15 +755,13 @@ function Dashboard() {
                                         </button>
                                     )}
 
-                                    {/* Custom - Enterprise only */}
                                     {user?.package_tier === 'enterprise' && hasFeatureAccess(user.package_tier) ? (
                                         <button
                                             onClick={() => setPageType('custom')}
-                                            className={`p-2 rounded-lg border-2 transition text-center ${
-                                                pageType === 'custom' 
-                                                    ? 'border-rose-500 bg-rose-50' 
+                                            className={`p-2 rounded-lg border-2 transition text-center ${pageType === 'custom'
+                                                    ? 'border-rose-500 bg-rose-50'
                                                     : 'border-gray-200 hover:border-rose-300'
-                                            }`}
+                                                }`}
                                         >
                                             <div className="text-xl mb-1">✨</div>
                                             <div className="font-semibold text-gray-700 text-xs">Custom</div>
@@ -935,12 +777,11 @@ function Dashboard() {
                                     )}
                                 </div>
 
-                                {/* Upgrade prompt for restricted access */}
                                 {user?.package_tier === 'free' && (
                                     <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
                                         <p className="text-xs text-blue-700">
-                                            <strong>Upgrade</strong> to unlock more event types! 
-                                            <button 
+                                            <strong>Upgrade</strong> to unlock more event types!
+                                            <button
                                                 onClick={() => { setShowCreateModal(false); navigate('/select-package'); }}
                                                 className="underline font-semibold ml-1"
                                             >
@@ -1131,7 +972,6 @@ function Dashboard() {
                                     Photos will be tagged with "{selectedOrder.recipientName?.toLowerCase().replace(/\s+/g, '') || 'birthday'}" for tracking
                                 </p>
 
-                                {/* Photo Preview Grid */}
                                 {birthdayDetails.photos.length > 0 && (
                                     <div className="grid grid-cols-3 gap-2 mt-3">
                                         {birthdayDetails.photos.map((photo, index) => (
@@ -1171,41 +1011,115 @@ function Dashboard() {
                                 🔗 Share Link
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
 
-                        {/* Share Link Section */}
-                        {showShareLink && (
-                            <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl">
-                                <h4 className="font-bold text-green-700 mb-2">🎉 Birthday Page Link</h4>
-                                <p className="text-sm text-gray-600 mb-3">
-                                    Share this link with friends and family to let them see {selectedOrder.recipientName}'s birthday page!
-                                </p>
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        readOnly
-                                        value={`${window.location.origin}/birthday/${selectedOrder.code}`}
-                                        className="flex-1 p-2 border-2 border-green-200 rounded-xl text-sm bg-white"
-                                    />
-                                    <button
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(`${window.location.origin}/birthday/${selectedOrder.code}`)
-                                            setShareLinkCopied(true)
-                                            setTimeout(() => setShareLinkCopied(false), 3000)
-                                        }}
-                                        className="bg-green-500 text-white px-4 py-2 rounded-xl text-sm"
-                                    >
-                                        {shareLinkCopied ? '✓ Copied!' : 'Copy'}
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="mt-4">
+            {/* Share Link Modal */}
+            {showShareLink && selectedOrder && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+                    <div className="bg-white rounded-3xl p-4 md:p-6 max-w-md w-full">
+                        <h4 className="font-bold text-green-700 mb-2 text-lg">🎉 Share Your Page</h4>
+                        <p className="text-sm text-gray-600 mb-3">
+                            Share this link with friends and family to let them see {selectedOrder.recipientName}'s birthday page!
+                        </p>
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                readOnly
+                                value={`${window.location.origin}/birthday/${selectedOrder.code}`}
+                                className="flex-1 p-2 border-2 border-green-200 rounded-xl text-sm bg-white"
+                            />
                             <button
-                                onClick={() => setShowDetailsModal(false)}
-                                className="w-full bg-gray-200 text-gray-600 py-3 rounded-xl font-semibold"
+                                onClick={() => {
+                                    navigator.clipboard.writeText(`${window.location.origin}/birthday/${selectedOrder.code}`)
+                                    setShareLinkCopied(true)
+                                    setTimeout(() => setShareLinkCopied(false), 3000)
+                                }}
+                                className="bg-green-500 text-white px-4 py-2 rounded-xl text-sm"
+                            >
+                                {shareLinkCopied ? '✓ Copied!' : 'Copy'}
+                            </button>
+                        </div>
+                        <div className="mt-4 text-center">
+                            <button
+                                onClick={() => setShowShareLink(false)}
+                                className="bg-gray-200 text-gray-600 px-4 py-2 rounded-xl font-semibold"
                             >
                                 Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Gift Options Modal - Selection Menu Only */}
+            {showGiftOptions && selectedOrderForGift && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+                    <div className="bg-white rounded-3xl p-6 max-w-md w-full">
+                        <h3 className="text-xl font-bold text-gray-700 mb-2 text-center">
+                            🎁 Send a Gift
+                        </h3>
+                        <p className="text-center text-gray-500 text-sm mb-6">
+                            Choose how you'd like to gift {selectedOrderForGift.recipientName}
+                        </p>
+                        
+                        <div className="space-y-4">
+                            {/* Send a Code */}
+                            <button
+                                onClick={() => {
+                                    navigate(`/gift/${selectedOrderForGift.code}?type=code&recipient=${encodeURIComponent(selectedOrderForGift.recipientName)}`);
+                                    setShowGiftOptions(false);
+                                }}
+                                className="w-full bg-white rounded-xl p-4 border-2 border-rose-100 hover:shadow-lg transition-all hover:border-rose-300 text-left flex items-center gap-4"
+                            >
+                                <div className="text-4xl">🔑</div>
+                                <div className="flex-1">
+                                    <h4 className="font-bold text-gray-800 text-lg">Send a Code</h4>
+                                    <p className="text-gray-500 text-sm">Gift a special code for exclusive rewards!</p>
+                                </div>
+                                <div className="text-gray-400">→</div>
+                            </button>
+                            
+                            {/* Scratch Card */}
+                            <button
+                                onClick={() => {
+                                    navigate(`/gift/${selectedOrderForGift.code}?type=scratch&recipient=${encodeURIComponent(selectedOrderForGift.recipientName)}`);
+                                    setShowGiftOptions(false);
+                                }}
+                                className="w-full bg-white rounded-xl p-4 border-2 border-rose-100 hover:shadow-lg transition-all hover:border-rose-300 text-left flex items-center gap-4"
+                            >
+                                <div className="text-4xl">💳</div>
+                                <div className="flex-1">
+                                    <h4 className="font-bold text-gray-800 text-lg">Scratch Card</h4>
+                                    <p className="text-gray-500 text-sm">Send a surprise scratch card with cash prize!</p>
+                                </div>
+                                <div className="text-gray-400">→</div>
+                            </button>
+                            
+                            {/* Order Products */}
+                            <button
+                                onClick={() => {
+                                    navigate(`/gift/${selectedOrderForGift.code}?type=products&recipient=${encodeURIComponent(selectedOrderForGift.recipientName)}`);
+                                    setShowGiftOptions(false);
+                                }}
+                                className="w-full bg-white rounded-xl p-4 border-2 border-rose-100 hover:shadow-lg transition-all hover:border-rose-300 text-left flex items-center gap-4"
+                            >
+                                <div className="text-4xl">📦</div>
+                                <div className="flex-1">
+                                    <h4 className="font-bold text-gray-800 text-lg">Order Products</h4>
+                                    <p className="text-gray-500 text-sm">Deliver surprise gifts right to their door! (Food package, Fabrics, etc.)</p>
+                                </div>
+                                <div className="text-gray-400">→</div>
+                            </button>
+                        </div>
+                        
+                        <div className="mt-6 text-center">
+                            <button
+                                onClick={() => setShowGiftOptions(false)}
+                                className="bg-gray-100 text-gray-600 px-6 py-2 rounded-xl font-semibold hover:bg-gray-200 transition"
+                            >
+                                Cancel
                             </button>
                         </div>
                     </div>

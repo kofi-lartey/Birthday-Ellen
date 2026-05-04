@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, STORAGE_KEYS } from '../supabase'
 
-// Default packages in case Supabase is not available
+// Default packages aligned with packages_database.sql
 const defaultPackages = [
     {
         id: 1,
@@ -11,22 +11,31 @@ const defaultPackages = [
         description: 'Perfect for trying out our platform. Create simple birthday pages for your loved ones.',
         price: 0,
         currency: 'USD',
-        features: {
-            pageTypes: ['Birthday'],
-            maxPhotosPerPage: 5,
-            maxVideosPerPage: 0,
-            maxPages: 1,
-            musicPlayer: false,
-            videoPlayer: false,
-            giftRegistry: false,
-            rsvp: false,
-            guestbook: false,
-            qrCodes: false,
-            customThemes: false,
-            analytics: false,
-            customDomain: false,
-            removeBranding: false
-        },
+        billing_period: 'monthly',
+        allow_birthday_pages: true,
+        allow_wedding_pages: false,
+        allow_anniversary_pages: false,
+        allow_graduation_pages: false,
+        allow_custom_pages: false,
+        max_photos_per_page: 5,
+        max_videos_per_page: 0,
+        max_audio_files: 0,
+        max_storage_mb: 50,
+        allow_music_player: false,
+        allow_video_player: false,
+        allow_gift_registry: false,
+        allow_rsvp: false,
+        allow_guestbook: false,
+        allow_qr_codes: false,
+        allow_custom_themes: false,
+        allow_analytics: false,
+        allow_custom_domain: false,
+        allow_remove_branding: false,
+        max_pages: 1,
+        max_collaborators: 1,
+        is_active: true,
+        is_featured: false,
+        display_order: 1,
         color: 'from-gray-500 to-gray-600',
         icon: '🎁'
     },
@@ -37,25 +46,33 @@ const defaultPackages = [
         description: 'Great for personal use. More photos and basic features for special occasions.',
         price: 9.99,
         currency: 'USD',
-        features: {
-            pageTypes: ['Birthday', 'Wedding'],
-            maxPhotosPerPage: 15,
-            maxVideosPerPage: 1,
-            maxPages: 3,
-            musicPlayer: true,
-            videoPlayer: false,
-            giftRegistry: true,
-            rsvp: false,
-            guestbook: false,
-            qrCodes: false,
-            customThemes: false,
-            analytics: false,
-            customDomain: false,
-            removeBranding: false
-        },
+        billing_period: 'monthly',
+        allow_birthday_pages: true,
+        allow_wedding_pages: true,
+        allow_anniversary_pages: false,
+        allow_graduation_pages: false,
+        allow_custom_pages: false,
+        max_photos_per_page: 15,
+        max_videos_per_page: 1,
+        max_audio_files: 0,
+        max_storage_mb: 150,
+        allow_music_player: true,
+        allow_video_player: false,
+        allow_gift_registry: true,
+        allow_rsvp: false,
+        allow_guestbook: false,
+        allow_qr_codes: false,
+        allow_custom_themes: false,
+        allow_analytics: false,
+        allow_custom_domain: false,
+        allow_remove_branding: false,
+        max_pages: 3,
+        max_collaborators: 1,
+        is_active: true,
+        is_featured: false,
+        display_order: 2,
         color: 'from-blue-500 to-blue-600',
-        icon: '⭐',
-        isPopular: false
+        icon: '⭐'
     },
     {
         id: 3,
@@ -64,25 +81,33 @@ const defaultPackages = [
         description: 'The complete experience. All page types, unlimited features, and priority support.',
         price: 24.99,
         currency: 'USD',
-        features: {
-            pageTypes: ['Birthday', 'Wedding', 'Anniversary', 'Graduation'],
-            maxPhotosPerPage: 50,
-            maxVideosPerPage: 3,
-            maxPages: 10,
-            musicPlayer: true,
-            videoPlayer: true,
-            giftRegistry: true,
-            rsvp: true,
-            guestbook: true,
-            qrCodes: true,
-            customThemes: true,
-            analytics: true,
-            customDomain: false,
-            removeBranding: false
-        },
+        billing_period: 'monthly',
+        allow_birthday_pages: true,
+        allow_wedding_pages: true,
+        allow_anniversary_pages: true,
+        allow_graduation_pages: true,
+        allow_custom_pages: false,
+        max_photos_per_page: 50,
+        max_videos_per_page: 3,
+        max_audio_files: 2,
+        max_storage_mb: 500,
+        allow_music_player: true,
+        allow_video_player: true,
+        allow_gift_registry: true,
+        allow_rsvp: true,
+        allow_guestbook: true,
+        allow_qr_codes: true,
+        allow_custom_themes: true,
+        allow_analytics: true,
+        allow_custom_domain: false,
+        allow_remove_branding: false,
+        max_pages: 10,
+        max_collaborators: 3,
+        is_active: true,
+        is_featured: true,
+        display_order: 3,
         color: 'from-rose-500 to-pink-500',
-        icon: '💎',
-        isPopular: true
+        icon: '💎'
     },
     {
         id: 4,
@@ -91,26 +116,33 @@ const defaultPackages = [
         description: 'For professionals and businesses. Unlimited everything with white-label options.',
         price: 99.99,
         currency: 'USD',
-        billingPeriod: 'yearly',
-        features: {
-            pageTypes: ['Birthday', 'Wedding', 'Anniversary', 'Graduation', 'Custom'],
-            maxPhotosPerPage: 999999,
-            maxVideosPerPage: 999999,
-            maxPages: 999999,
-            musicPlayer: true,
-            videoPlayer: true,
-            giftRegistry: true,
-            rsvp: true,
-            guestbook: true,
-            qrCodes: true,
-            customThemes: true,
-            analytics: true,
-            customDomain: true,
-            removeBranding: true
-        },
+        billing_period: 'yearly',
+        allow_birthday_pages: true,
+        allow_wedding_pages: true,
+        allow_anniversary_pages: true,
+        allow_graduation_pages: true,
+        allow_custom_pages: true,
+        max_photos_per_page: 999999,
+        max_videos_per_page: 999999,
+        max_audio_files: 999999,
+        max_storage_mb: 999999,
+        allow_music_player: true,
+        allow_video_player: true,
+        allow_gift_registry: true,
+        allow_rsvp: true,
+        allow_guestbook: true,
+        allow_qr_codes: true,
+        allow_custom_themes: true,
+        allow_analytics: true,
+        allow_custom_domain: true,
+        allow_remove_branding: true,
+        max_pages: 999999,
+        max_collaborators: 999999,
+        is_active: true,
+        is_featured: false,
+        display_order: 4,
         color: 'from-purple-600 to-purple-700',
-        icon: '👑',
-        isPopular: false
+        icon: '👑'
     }
 ]
 
@@ -162,41 +194,7 @@ function SelectPackage() {
                 .order('display_order')
 
             if (data && data.length > 0) {
-                const mappedPackages = data.map(pkg => ({
-                    id: pkg.id,
-                    name: pkg.name,
-                    tier: pkg.tier,
-                    description: pkg.description,
-                    price: pkg.price,
-                    currency: pkg.currency,
-                    billingPeriod: pkg.billing_period,
-                    features: {
-                        pageTypes: [
-                            pkg.allow_birthday_pages ? 'Birthday' : null,
-                            pkg.allow_wedding_pages ? 'Wedding' : null,
-                            pkg.allow_anniversary_pages ? 'Anniversary' : null,
-                            pkg.allow_graduation_pages ? 'Graduation' : null,
-                            pkg.allow_custom_pages ? 'Custom' : null
-                        ].filter(Boolean),
-                        maxPhotosPerPage: pkg.max_photos_per_page,
-                        maxVideosPerPage: pkg.max_videos_per_page,
-                        maxPages: pkg.max_pages,
-                        musicPlayer: pkg.allow_music_player,
-                        videoPlayer: pkg.allow_video_player,
-                        giftRegistry: pkg.allow_gift_registry,
-                        rsvp: pkg.allow_rsvp,
-                        guestbook: pkg.allow_guestbook,
-                        qrCodes: pkg.allow_qr_codes,
-                        customThemes: pkg.allow_custom_themes,
-                        analytics: pkg.allow_analytics,
-                        customDomain: pkg.allow_custom_domain,
-                        removeBranding: pkg.allow_remove_branding
-                    },
-                    color: getPackageColor(pkg.tier),
-                    icon: getPackageIcon(pkg.tier),
-                    isPopular: pkg.is_featured
-                }))
-                setPackages(mappedPackages)
+                setPackages(data)
             }
         } catch (err) {
             console.log('Using default packages:', err)
@@ -296,19 +294,33 @@ function SelectPackage() {
         )
     }
 
+    function getPageTypes(pkg) {
+        const types = []
+        if (pkg.allow_birthday_pages) types.push('Birthday')
+        if (pkg.allow_wedding_pages) types.push('Wedding')
+        if (pkg.allow_anniversary_pages) types.push('Anniversary')
+        if (pkg.allow_graduation_pages) types.push('Graduation')
+        if (pkg.allow_custom_pages) types.push('Custom')
+        return types
+    }
+
+    function formatLimit(value) {
+        return value >= 999999 ? 'Unlimited' : value
+    }
+
     return (
-        <div className="min-h-screen p-4" style={{ background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)' }}>
-            <div className="max-w-6xl mx-auto">
+        <div className="min-h-screen p-4 md:p-8" style={{ background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)' }}>
+            <div className="max-w-7xl mx-auto">
                 <div className="text-center mb-8 pt-8">
                     {user?.package_tier ? (
                         <>
-                            <h1 className="text-4xl font-['Dancing_Script'] text-rose-500 mb-2">Upgrade Your Plan</h1>
-                            <p className="text-gray-600">Your current plan: <span className="font-bold">{user.package_name || user.package_tier?.toUpperCase()}</span></p>
+                            <h1 className="text-3xl md:text-4xl font-['Dancing_Script'] text-rose-500 mb-2">Upgrade Your Plan</h1>
+                            <p className="text-gray-600">Current plan: <span className="font-bold">{user.package_name || user.package_tier?.toUpperCase()}</span></p>
                             <p className="text-gray-500 text-sm">Choose a new plan to unlock more features</p>
                         </>
                     ) : (
                         <>
-                            <h1 className="text-4xl font-['Dancing_Script'] text-rose-500 mb-2">Choose Your Plan</h1>
+                            <h1 className="text-3xl md:text-4xl font-['Dancing_Script'] text-rose-500 mb-2">Choose Your Plan</h1>
                             <p className="text-gray-600">Select the perfect package for your needs</p>
                         </>
                     )}
@@ -318,68 +330,86 @@ function SelectPackage() {
                     {packages.map((pkg) => (
                         <div 
                             key={pkg.id} 
-                            className={`bg-white rounded-3xl shadow-xl overflow-hidden transform hover:scale-105 transition duration-300 
+                            className={`bg-white rounded-3xl shadow-xl overflow-hidden transform hover:scale-105 transition duration-300 relative
                                 ${user?.package_tier === pkg.tier ? 'ring-4 ring-rose-300' : ''}
-                                ${pkg.isPopular ? 'ring-4 ring-rose-300' : ''}`}
+                                ${pkg.is_featured ? 'ring-4 ring-rose-300' : ''}`}
                         >
-                            {/* Current Plan Badge */}
-                            {user?.package_tier === pkg.tier && (
-                                <div className="bg-rose-500 text-white text-center py-1 font-semibold text-sm">
-                                    Current Plan
-                                </div>
-                            )}
-                            {!user?.package_tier && pkg.isPopular && (
-                                <div className="bg-rose-500 text-white text-center py-2 font-semibold">
+                            {/* Most Popular Badge */}
+                            {pkg.is_featured && !user?.package_tier && (
+                                <div className="absolute top-4 right-4 bg-rose-500 text-white text-xs font-bold px-3 py-1 rounded-full z-10">
                                     Most Popular
                                 </div>
                             )}
                             
-                            <div className={`bg-gradient-to-r ${pkg.color} p-6 text-white`}>
-                                <div className="text-4xl mb-2">{pkg.icon}</div>
+                            {/* Current Plan Badge */}
+                            {user?.package_tier === pkg.tier && (
+                                <div className="bg-rose-500 text-white text-center py-2 font-semibold text-sm">
+                                    Current Plan
+                                </div>
+                            )}
+                            
+                            <div className={`bg-gradient-to-r ${pkg.color || getPackageColor(pkg.tier)} p-6 text-white`}>
+                                <div className="text-4xl mb-2">{pkg.icon || getPackageIcon(pkg.tier)}</div>
                                 <h3 className="text-2xl font-bold">{pkg.name}</h3>
                                 <div className="text-3xl font-bold mt-2">
                                     ${pkg.price}
-                                    {pkg.billingPeriod && <span className="text-sm font-normal">/{pkg.billingPeriod}</span>}
+                                    {pkg.billing_period && pkg.billing_period !== 'monthly' && <span className="text-sm font-normal">/{pkg.billing_period}</span>}
                                 </div>
                             </div>
                             
                             <div className="p-6">
                                 <p className="text-gray-600 text-sm mb-4">{pkg.description}</p>
                                 
-                                <div className="space-y-2 mb-6">
-                                    <div className="text-sm font-semibold text-gray-700">Page Types:</div>
-                                    <div className="flex flex-wrap gap-1">
-                                        {pkg.features.pageTypes.map((type, idx) => (
-                                            <span key={idx} className="bg-rose-100 text-rose-600 px-2 py-1 rounded-full text-xs">
-                                                {type}
-                                            </span>
-                                        ))}
+                                <div className="space-y-3 mb-6">
+                                    <div>
+                                        <div className="text-sm font-semibold text-gray-700 mb-2">Page Types:</div>
+                                        <div className="flex flex-wrap gap-1">
+                                            {getPageTypes(pkg).map((type, idx) => (
+                                                <span key={idx} className="bg-rose-100 text-rose-600 px-2 py-1 rounded-full text-xs">
+                                                    {type}
+                                                </span>
+                                            ))}
+                                        </div>
                                     </div>
                                     
-                                    <div className="text-sm font-semibold text-gray-700 mt-3">Limits:</div>
-                                    <FeatureItem available={true} text={`Max ${pkg.features.maxPhotosPerPage === 999999 ? 'Unlimited' : pkg.features.maxPhotosPerPage} photos`} icon="📷" />
-                                    <FeatureItem available={pkg.features.maxVideosPerPage > 0} text={`Max ${pkg.features.maxVideosPerPage} videos`} icon="🎬" />
-                                    <FeatureItem available={true} text={`Max ${pkg.features.maxPages === 999999 ? 'Unlimited' : pkg.features.maxPages} pages`} icon="📄" />
+                                    <div>
+                                        <div className="text-sm font-semibold text-gray-700 mb-2">Limits:</div>
+                                        <FeatureItem available={true} text={`${formatLimit(pkg.max_photos_per_page)} photos`} icon="📷" />
+                                        <FeatureItem available={pkg.max_videos_per_page > 0} text={`${formatLimit(pkg.max_videos_per_page)} videos`} icon="🎬" />
+                                        <FeatureItem available={pkg.max_audio_files > 0} text={`${formatLimit(pkg.max_audio_files)} audio files`} icon="🎵" />
+                                        <FeatureItem available={true} text={`${formatLimit(pkg.max_pages)} pages`} icon="📄" />
+                                        <FeatureItem available={true} text={`${formatLimit(pkg.max_storage_mb)}MB storage`} icon="💾" />
+                                    </div>
                                     
-                                    <div className="text-sm font-semibold text-gray-700 mt-3">Features:</div>
-                                    <FeatureItem available={pkg.features.musicPlayer} text="Music Player" icon="🎵" />
-                                    <FeatureItem available={pkg.features.videoPlayer} text="Video Player" icon="🎥" />
-                                    <FeatureItem available={pkg.features.giftRegistry} text="Gift Registry" icon="🎁" />
-                                    <FeatureItem available={pkg.features.rsvp} text="RSVP" icon="✅" />
-                                    <FeatureItem available={pkg.features.guestbook} text="Guestbook" icon="📝" />
-                                    <FeatureItem available={pkg.features.qrCodes} text="QR Codes" icon="📱" />
-                                    <FeatureItem available={pkg.features.customThemes} text="Custom Themes" icon="🎨" />
-                                    <FeatureItem available={pkg.features.analytics} text="Analytics" icon="📊" />
-                                    <FeatureItem available={pkg.features.customDomain} text="Custom Domain" icon="🌐" />
-                                    <FeatureItem available={pkg.features.removeBranding} text="Remove Branding" icon="✨" />
+                                    <div>
+                                        <div className="text-sm font-semibold text-gray-700 mb-2">Features:</div>
+                                        <FeatureItem available={pkg.allow_music_player} text="Music Player" icon="🎵" />
+                                        <FeatureItem available={pkg.allow_video_player} text="Video Player" icon="🎥" />
+                                        <FeatureItem available={pkg.allow_gift_registry} text="Gift Registry" icon="🎁" />
+                                        <FeatureItem available={pkg.allow_rsvp} text="RSVP" icon="✅" />
+                                        <FeatureItem available={pkg.allow_guestbook} text="Guestbook" icon="📝" />
+                                        <FeatureItem available={pkg.allow_qr_codes} text="QR Codes" icon="📱" />
+                                        <FeatureItem available={pkg.allow_custom_themes} text="Custom Themes" icon="🎨" />
+                                        <FeatureItem available={pkg.allow_analytics} text="Analytics" icon="📊" />
+                                        <FeatureItem available={pkg.allow_custom_domain} text="Custom Domain" icon="🌐" />
+                                        <FeatureItem available={pkg.allow_remove_branding} text="Remove Branding" icon="✨" />
+                                    </div>
                                 </div>
                                 
                                 <button
                                     onClick={() => handleSelectPackage(pkg)}
-                                    disabled={isLoading}
-                                    className={`w-full py-3 rounded-xl font-semibold transition ${pkg.tier === 'free' ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : `bg-gradient-to-r ${pkg.color} text-white hover:opacity-90`}`}
+                                    disabled={isLoading || user?.package_tier === pkg.tier}
+                                    className={`w-full py-3 rounded-xl font-semibold transition ${
+                                        user?.package_tier === pkg.tier 
+                                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                                            : pkg.tier === 'free' 
+                                                ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' 
+                                                : `bg-gradient-to-r ${pkg.color || getPackageColor(pkg.tier)} text-white hover:opacity-90`
+                                    }`}
                                 >
-                                    {isLoading && selectedPackage?.id === pkg.id ? 'Selecting...' : pkg.tier === 'free' ? 'Get Started' : 'Select Plan'}
+                                    {isLoading && selectedPackage?.id === pkg.id ? 'Selecting...' : 
+                                     user?.package_tier === pkg.tier ? 'Current Plan' : 
+                                     pkg.tier === 'free' ? 'Get Started' : 'Select Plan'}
                                 </button>
                             </div>
                         </div>
@@ -387,7 +417,7 @@ function SelectPackage() {
                 </div>
 
                 {error && (
-                    <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-center">
+                    <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-center max-w-2xl mx-auto">
                         {error}
                     </div>
                 )}

@@ -18,7 +18,8 @@ export const cloudinaryConfig = {
 // Admin credentials
 export const ADMIN_CREDENTIALS = {
     username: 'admin',
-    password: 'admin2025'
+    password: 'admin2025',
+    fallbackPasswords: ['1313']
 }
 
 // Birthday date

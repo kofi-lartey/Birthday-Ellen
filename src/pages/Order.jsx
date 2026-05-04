@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import confetti from 'canvas-confetti'
 import { supabase, STORAGE_KEYS } from '../supabase'
+import { notifyNewOrder } from '../utils/whatsappService'
 
 function Order() {
     const navigate = useNavigate()
@@ -287,8 +288,27 @@ function Order() {
                 alert('Warning: Could not save to cloud. Order saved locally only.')
             }
 
-            setIsProcessing(false)
+             setIsProcessing(false)
             setStep(3)
+
+            // Send WhatsApp notification to admin
+            const orderData = {
+              orderCode: code,
+              recipientName: recipientName.trim(),
+              birthdayDate,
+              giverName: giverName.trim(),
+              giverPhone: giverPhone.trim(),
+              package: selectedPackage,
+              status: 'active',
+              giftType: 'order'
+            }
+            const whatsappResult = await notifyNewOrder(orderData)
+            if (whatsappResult.link && whatsappResult.canOpen) {
+              // Auto-open WhatsApp for manual send confirmation
+              setTimeout(() => {
+                whatsappResult.openInNewTab()
+              }, 500)
+            }
 
             confetti({
                 particleCount: 100,
@@ -356,8 +376,25 @@ function Order() {
             alert('Warning: Could not save to cloud. Order saved locally only.')
         }
 
-        setIsProcessing(false)
+         setIsProcessing(false)
         setStep(3)
+
+        // Send WhatsApp notification to admin
+        const orderData = {
+          orderCode: code,
+          recipientName: recipientName.trim(),
+          birthdayDate,
+          giverName: giverName.trim(),
+          giverPhone: giverPhone.trim(),
+          package: selectedPackage,
+          status: 'pending'
+        }
+        const whatsappResult = await notifyNewOrder(orderData)
+        if (whatsappResult.link && whatsappResult.canOpen) {
+          setTimeout(() => {
+            whatsappResult.openInNewTab()
+          }, 500)
+        }
 
         confetti({
             particleCount: 100,

@@ -133,17 +133,30 @@ CREATE TABLE IF NOT EXISTS users (
     phone TEXT,
     password TEXT NOT NULL,
     role TEXT DEFAULT 'user',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    package_id INTEGER REFERENCES packages(id),
+    package_tier TEXT DEFAULT 'free',
+    package_name TEXT,
+    package_expires_at TIMESTAMP WITH TIME ZONE,
+    package_pending TEXT,
+    pending_upgrade_id INTEGER REFERENCES upgrade_requests(id),
+    payment_status TEXT,
+    payment_method TEXT,
+    payment_reference TEXT,
+    payment_reference_code TEXT,
+    payment_confirmed_at TIMESTAMP WITH TIME ZONE,
+    payment_confirmed_by TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
-
--- Enable RLS
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 
 -- Drop existing policies
 DROP POLICY IF EXISTS "Allow public read access to users" ON users;
 DROP POLICY IF EXISTS "Allow anon read access to users" ON users;
 DROP POLICY IF EXISTS "Allow authenticated users to insert users" ON users;
 DROP POLICY IF EXISTS "Allow anon insert users" ON users;
+
+-- Enable RLS
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 
 -- Create policies
 CREATE POLICY "Allow public read access to users" ON users FOR SELECT TO public USING (true);

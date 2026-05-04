@@ -1,6 +1,45 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { supabase } from '../supabase';
+import { supabase, STORAGE_KEYS } from '../supabase';
+
+// Page type configurations for dynamic text
+const PAGE_TYPE_CONFIG = {
+  birthday: {
+    title: 'Happy Birthday',
+    personLabel: 'Birthday Person',
+    emoji: '🎂',
+    celebrationName: 'Birthday',
+    defaultMessage: "Another year has passed, and my love for you only grows stronger. You are my sunshine on cloudy days, my smile when I'm sad, my everything. Today we celebrate the day the most amazing person came into this world - YOU!"
+  },
+  wedding: {
+    title: 'Congratulations',
+    personLabel: 'Wedding Couple',
+    emoji: '💒',
+    celebrationName: 'Wedding',
+    defaultMessage: "Today two hearts become one. Your love story is an inspiration to us all. May your journey together be filled with endless love, joy, and beautiful moments. Here's to forever!"
+  },
+  anniversary: {
+    title: 'Happy Anniversary',
+    personLabel: 'Celebration Couple',
+    emoji: '💕',
+    celebrationName: 'Anniversary',
+    defaultMessage: "Another year of love, laughter, and memories. Your relationship grows more beautiful with time. May this anniversary be the start of your most wonderful year yet!"
+  },
+  graduation: {
+    title: 'Congratulations Graduate',
+    personLabel: 'Graduate',
+    emoji: '🎓',
+    celebrationName: 'Graduation',
+    defaultMessage: "Your hard work and dedication have paid off. Today we celebrate your amazing achievement! The future is bright and full of possibilities. Go conquer the world!"
+  },
+  custom: {
+    title: 'Celebrating You',
+    personLabel: 'Celebrant',
+    emoji: '✨',
+    celebrationName: 'Special Event',
+    defaultMessage: "Today is all about celebrating you and this special moment. May this occasion bring you joy, love, and unforgettable memories!"
+  }
+};
 
 const Birthday = () => {
   const { code } = useParams();
@@ -12,9 +51,13 @@ const Birthday = () => {
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [currentSlide, setCurrentSlide] = useState(0);
   const [typedText, setTypedText] = useState('');
-  const [showGift, setShowGift] = useState(false);
+  const [receivedGifts, setReceivedGifts] = useState([]);
   const slideIntervalRef = useRef(null);
   const audioRef = useRef(null);
+
+  // Get page type config
+  const pageType = order?.page_type || 'birthday';
+  const config = PAGE_TYPE_CONFIG[pageType] || PAGE_TYPE_CONFIG.birthday;
 
   // Default background image (neutral gradient)
   const DEFAULT_BACKGROUND = 'https://images.unsplash.com/photo-1518640467707-6811f4a6ab73?w=1280&q=80';
@@ -43,6 +86,44 @@ const Birthday = () => {
       }
     };
   }, [isBirthday, revealed, order]);
+
+  // Load received gifts when order is loaded and revealed
+  useEffect(() => {
+    if (order && code) {
+      const storageKey = `${STORAGE_KEYS.GIFTS}_${code.toUpperCase()}`;
+      const gifts = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      setReceivedGifts(gifts);
+    }
+  }, [order, code]);
+
+  // Listen for storage changes to update gifts in real-time
+  useEffect(() => {
+    if (!code) return;
+    
+    const handleStorageChange = (e) => {
+      if (e.key === `${STORAGE_KEYS.GIFTS}_${code.toUpperCase()}` || e.key === STORAGE_KEYS.GIFTS) {
+        const storageKey = `${STORAGE_KEYS.GIFTS}_${code.toUpperCase()}`;
+        const gifts = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        setReceivedGifts(gifts);
+      }
+    };
+
+    // Listen for localStorage changes
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Also listen for custom events from Gift page for same-tab updates
+    const handleGiftUpdate = () => {
+      const storageKey = `${STORAGE_KEYS.GIFTS}_${code.toUpperCase()}`;
+      const gifts = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      setReceivedGifts(gifts);
+    };
+    window.addEventListener('giftAdded', handleGiftUpdate);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('giftAdded', handleGiftUpdate);
+    };
+  }, [code, order]);
 
   const loadOrder = async () => {
     try {
@@ -126,9 +207,11 @@ const Birthday = () => {
       return;
     }
     
-    // If birthday has passed this year, set to next year
+    // If birthday has passed this year (including yesterday), show zeros permanently
     if (now > birthday) {
-      birthday.setFullYear(now.getFullYear() + 1);
+      setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+      setIsBirthday(true);
+      return;
     }
     
     const diff = birthday - now;
@@ -172,14 +255,6 @@ const Birthday = () => {
     } else {
       alert('Calm down, baby! Your birthday surprise will be revealed when the countdown reaches zero!');
     }
-  };
-
-  const revealGift = () => {
-    if (!isBirthday) {
-      alert("Calm down and wait for your main day...I have something nice for you!");
-      return;
-    }
-    setShowGift(true);
   };
 
   const formatNumber = (num) => String(num).padStart(2, '0');
@@ -254,7 +329,7 @@ const Birthday = () => {
       <section className="min-h-screen flex items-center justify-center text-center px-6 relative z-10">
         <div>
           <h1 className="text-5xl md:text-6xl font-bold romantic-font text-rose-400 mb-4">
-            To The Love Of My Life 💕
+            To {nickname || 'You'} {config.emoji}
           </h1>
           <p className="text-white animate-pulse">Keep watching, beautiful ✨</p>
         </div>
@@ -263,10 +338,10 @@ const Birthday = () => {
       {/* Love Declaration */}
       <section className="py-16 text-center px-6 relative z-10" style={{background: 'rgba(255,255,255,0.85)'}}>
         <div className="max-w-3xl mx-auto">
-          <div className="text-6xl mb-6">💕</div>
+          <div className="text-6xl mb-6">{config.emoji}</div>
           <h2 className="text-4xl font-bold romantic-font gradient-text mb-6">{heartMessage}</h2>
           <p className="text-lg text-gray-600 leading-relaxed">
-            {letter || "Another year has passed, and my love for you only grows stronger. You are my sunshine on cloudy days, my smile when I'm sad, my everything. Today we celebrate the day the most amazing person came into this world - YOU!"}
+            {letter || config.defaultMessage}
           </p>
         </div>
       </section>
@@ -311,11 +386,11 @@ const Birthday = () => {
       {/* Revealed Content */}
       {revealed && (
         <div className="relative z-10">
-          {/* Birthday Message */}
+          {/* Celebration Message */}
           <section className="py-16 text-center" style={{background: 'rgba(255,255,255,0.9)'}}>
             <div className="text-6xl mb-4">🎉</div>
             <h2 className="text-4xl font-bold romantic-font gradient-text">
-              Happy Birthday, {nickname}! 🎂💕
+              {config.title}, {nickname}! {config.emoji}
             </h2>
           </section>
 
@@ -337,48 +412,58 @@ const Birthday = () => {
             <p className="text-center text-gray-500 mt-4">Swipe to see more 💫</p>
           </section>
 
-          {/* Gift Section */}
-          <section className="py-16 text-center px-6" style={{background: 'rgba(255,255,255,0.85)'}}>
-            {!showGift ? (
-              <button
-                onClick={revealGift}
-                className="bg-gradient-to-r from-rose-500 to-pink-500 text-white px-10 py-4 rounded-full shadow-lg text-lg font-semibold hover:scale-105 transition-transform"
-              >
-                🎁 Tap For Your Gift
-              </button>
-            ) : (
-              <div className="max-w-2xl mx-auto">
-                <div className="text-6xl mb-6">🎉</div>
-                <h3 className="text-3xl font-bold romantic-font gradient-text mb-4">
-                  You Are My Greatest Blessing! 💖
-                </h3>
-                <p className="text-gray-600 text-lg leading-relaxed">
-                  Every day with you feels like a gift. You make my life complete in ways I never thought possible.
-                  Your smile lights up my world, your laughter is my favorite melody, and your love is everything I've ever wanted.
-                  I promise to love you forever, to cherish you always, and to make you as happy as you make me.
-                  You deserve all the love in the universe and more! ✨💕
-                </p>
-              </div>
-            )}
-          </section>
+           {/* Slideshow Link */}
+           <section className="py-10 text-center" style={{background: 'rgba(255,255,255,0.85)'}}>
+             <div className="flex flex-col md:flex-row gap-4 justify-center">
+               <Link
+                 to={`/slideshow/${code}`}
+                 className="bg-gradient-to-r from-rose-500 to-pink-500 text-white font-bold py-3 px-6 rounded-full shadow-lg hover:scale-105 transition-transform inline-block"
+               >
+                 View Slideshow 🎬
+               </Link>
+             </div>
+           </section>
 
-          {/* Links */}
-          <section className="py-10 text-center" style={{background: 'rgba(255,255,255,0.85)'}}>
-            <div className="flex flex-col md:flex-row gap-4 justify-center">
-              <Link
-                to={`/slideshow/${code}`}
-                className="bg-gradient-to-r from-rose-500 to-pink-500 text-white font-bold py-3 px-6 rounded-full shadow-lg hover:scale-105 transition-transform inline-block"
-              >
-                View Slideshow 🎬
-              </Link>
-              <Link
-                to={`/gift/${code}`}
-                className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold py-3 px-6 rounded-full shadow-lg hover:scale-105 transition-transform inline-block"
-              >
-                Send a Gift 🎁
-              </Link>
-            </div>
-          </section>
+           {/* Received Gifts Section */}
+           {revealed && (
+             <section className="py-10 text-center px-6" style={{background: 'rgba(255,255,255,0.85)'}}>
+               <div className="max-w-4xl mx-auto">
+                 <h3 className="text-2xl font-bold romantic-font gradient-text mb-6">
+                   💝 Gifts Received ({receivedGifts.length})
+                 </h3>
+                 {receivedGifts.length === 0 ? (
+                   <p className="text-gray-500">
+                     No gifts received yet. Share your page link to start receiving gifts!
+                   </p>
+                 ) : (
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     {receivedGifts.map((gift, index) => (
+                       <div key={index} className="bg-white rounded-2xl p-5 shadow-lg border-2 border-rose-100 text-left">
+                         <div className="flex items-start gap-3">
+                           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-rose-400 to-pink-400 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+                             {gift.name?.charAt(0).toUpperCase() || 'A'}
+                           </div>
+                           <div className="flex-1 min-w-0">
+                             <div className="font-bold text-gray-700 mb-1">
+                               {gift.name || 'Anonymous'}
+                             </div>
+                             <p className="text-gray-600 text-sm mb-2 leading-relaxed">
+                               {gift.message || 'No message'} 
+                             </p>
+                             <div className="text-xs text-gray-400">
+                               {gift.date ? new Date(gift.date).toLocaleString() : 'Just now'}
+                             </div>
+                           </div>
+                         </div>
+                       </div>
+                     ))}
+                   </div>
+                 )}
+               </div>
+             </section>
+           )}
+
+
         </div>
       )}
 
