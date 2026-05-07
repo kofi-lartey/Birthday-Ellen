@@ -1,49 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { supabase, STORAGE_KEYS } from '../supabase';
-
-// Page type configurations for dynamic text
-const PAGE_TYPE_CONFIG = {
-  birthday: {
-    title: 'Happy Birthday',
-    personLabel: 'Birthday Person',
-    emoji: '🎂',
-    celebrationName: 'Birthday',
-    defaultMessage: "Another year has passed, and my love for you only grows stronger. You are my sunshine on cloudy days, my smile when I'm sad, my everything. Today we celebrate the day the most amazing person came into this world - YOU!"
-  },
-  wedding: {
-    title: 'Congratulations',
-    personLabel: 'Wedding Couple',
-    emoji: '💒',
-    celebrationName: 'Wedding',
-    defaultMessage: "Today two hearts become one. Your love story is an inspiration to us all. May your journey together be filled with endless love, joy, and beautiful moments. Here's to forever!"
-  },
-  anniversary: {
-    title: 'Happy Anniversary',
-    personLabel: 'Celebration Couple',
-    emoji: '💕',
-    celebrationName: 'Anniversary',
-    defaultMessage: "Another year of love, laughter, and memories. Your relationship grows more beautiful with time. May this anniversary be the start of your most wonderful year yet!"
-  },
-  graduation: {
-    title: 'Congratulations Graduate',
-    personLabel: 'Graduate',
-    emoji: '🎓',
-    celebrationName: 'Graduation',
-    defaultMessage: "Your hard work and dedication have paid off. Today we celebrate your amazing achievement! The future is bright and full of possibilities. Go conquer the world!"
-  },
-  custom: {
-    title: 'Celebrating You',
-    personLabel: 'Celebrant',
-    emoji: '✨',
-    celebrationName: 'Special Event',
-    defaultMessage: "Today is all about celebrating you and this special moment. May this occasion bring you joy, love, and unforgettable memories!"
-  }
-};
+import { getEventSchema, getEventDisplay, getTableForOrderType, detectOrderTypeFromPath } from '../config/orderTypeMapping';
 
 const Birthday = () => {
   const { code } = useParams();
+  const location = useLocation();
   const [order, setOrder] = useState(null);
+  const [eventData, setEventData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [revealed, setRevealed] = useState(false);
@@ -52,12 +16,18 @@ const Birthday = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [typedText, setTypedText] = useState('');
   const [receivedGifts, setReceivedGifts] = useState([]);
+  const [eventType, setEventType] = useState('birthday');
   const slideIntervalRef = useRef(null);
   const audioRef = useRef(null);
 
-  // Get page type config
-  const pageType = order?.page_type || 'birthday';
-  const config = PAGE_TYPE_CONFIG[pageType] || PAGE_TYPE_CONFIG.birthday;
+  // Detect order type from URL
+  useEffect(() => {
+    const detectedType = detectOrderTypeFromPath(location.pathname);
+    setEventType(detectedType);
+  }, [location]);
+
+  // Get display config based on event type
+  const displayConfig = getEventDisplay(eventType);
 
   // Default background image (neutral gradient)
   const DEFAULT_BACKGROUND = 'https://images.unsplash.com/photo-1518640467707-6811f4a6ab73?w=1280&q=80';
@@ -129,7 +99,32 @@ const Birthday = () => {
     try {
       setLoading(true);
       
-      // Load directly from Supabase - the source of truth
+      // Try loading from specific event table first
+      if (eventType && eventType !== 'birthday') {
+        try {
+          const table = getTableForOrderType(eventType);
+          const { data: eventResult, error: eventError } = await supabase
+            .from(table)
+            .select('*')
+            .eq('code', code)
+            .limit(1)
+            .single();
+          
+          if (eventResult && !eventError) {
+            setEventData(eventResult);
+            setOrder({
+              ...eventResult,
+              page_type: eventType
+            });
+            setLoading(false);
+            return;
+          }
+        } catch (err) {
+          console.log(`Could not load from ${table} table`);
+        }
+      }
+      
+      // Fall back to orders table (for birthday events)
       const { data, error } = await supabase
         .from('orders')
         .select('*')
@@ -139,6 +134,24 @@ const Birthday = () => {
       
       if (error) {
         console.error('Error loading order from Supabase:', error);
+        // Try localStorage fallback
+        const localOrders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]');
+        const localOrder = localOrders.find(o => o.code?.toLowerCase() === code?.toLowerCase());
+        
+        if (localOrder) {
+          const normalizedOrder = {
+            ...localOrder,
+            recipient_name: localOrder.recipient_name || localOrder.recipientName,
+            birthday_date: localOrder.birthday_date || localOrder.birthdayDate,
+            giver_name: localOrder.giver_name || localOrder.giverName,
+            giver_phone: localOrder.giver_phone || localOrder.giverPhone,
+            page_type: localOrder.page_type || localOrder.pageType,
+            created_at: localOrder.created_at || localOrder.createdAt
+          };
+          setOrder(normalizedOrder);
+          setLoading(false);
+          return;
+        }
         throw error;
       }
       
@@ -151,21 +164,28 @@ const Birthday = () => {
     }
   };
 
-  const getBirthdayDetails = () => {
+  const getEventDetails = () => {
     if (!order) return null;
     
-    // Debug: log the order data to see what's coming
-    console.log('Order data:', order);
-    console.log('date_of_birth:', order.date_of_birth);
-    console.log('birthday_date:', order.birthday_date);
+    // For non-birthday events, use event data
+    if (eventType !== 'birthday' && eventData) {
+      return {
+        backgroundImage: DEFAULT_BACKGROUND,
+        audioUrl: DEFAULT_AUDIO,
+        photos: [],
+        title: eventData.event_name || eventData.couple_names || displayConfig.title,
+        description: eventData.description || displayConfig.defaultMessage,
+        emoji: displayConfig.emoji
+      };
+    }
     
+    // For birthday events, use existing logic
     return {
       backgroundImage: order.background_image || DEFAULT_BACKGROUND,
       audioUrl: order.audio_url || DEFAULT_AUDIO,
       photos: order.photos ? (typeof order.photos === 'string' ? JSON.parse(order.photos) : order.photos) : [],
       nickname: order.nickname || 'My Love',
       letter: order.letter || '',
-      // Use birthday_date first (from Order), then date_of_birth (from Dashboard)
       dateOfBirth: order.birthday_date || order.date_of_birth || order.dateOfBirth || '',
       heartMessage: order.heart_message || 'My Heart Belongs To You'
     };
@@ -174,47 +194,40 @@ const Birthday = () => {
   const calculateCountdown = () => {
     if (!order) return;
     
-    const details = getBirthdayDetails();
-    const birthdayDateStr = details?.dateOfBirth;
+    const details = getEventDetails();
+    const dateStr = details?.dateOfBirth;
     
-    console.log('Birthday date string:', birthdayDateStr);
-    
-    if (!birthdayDateStr) {
-      // No date - show zeros
+    if (!dateStr) {
       setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0 });
       return;
     }
     
     const now = new Date();
     
-    // Parse the date - handle different formats
-    let birthday;
+    let targetDate;
     try {
-      const [year, month, day] = birthdayDateStr.split('-').map(Number);
-      birthday = new Date(now.getFullYear(), month - 1, day);
+      const [year, month, day] = dateStr.split('-').map(Number);
+      targetDate = new Date(now.getFullYear(), month - 1, day);
     } catch (e) {
-      console.error('Error parsing date:', e);
       setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0 });
       return;
     }
     
-    // Check if birthday is today
-    const isBirthdayToday = now.getMonth() === birthday.getMonth() && now.getDate() === birthday.getDate();
+    const isTargetDay = now.getMonth() === targetDate.getMonth() && now.getDate() === targetDate.getDate();
     
-    if (isBirthdayToday) {
+    if (isTargetDay) {
       setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0 });
       setIsBirthday(true);
       return;
     }
     
-    // If birthday has passed this year (including yesterday), show zeros permanently
-    if (now > birthday) {
+    if (now > targetDate) {
       setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0 });
       setIsBirthday(true);
       return;
     }
     
-    const diff = birthday - now;
+    const diff = targetDate - now;
     
     if (diff <= 0) {
       setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0 });
@@ -232,7 +245,7 @@ const Birthday = () => {
   };
 
   const startSlideshow = () => {
-    const details = getBirthdayDetails();
+    const details = getEventDetails();
     const photos = details?.photos || [];
     
     if (photos.length <= 1) return;
@@ -253,7 +266,7 @@ const Birthday = () => {
         audioRef.current.play().catch(console.error);
       }
     } else {
-      alert('Calm down, baby! Your birthday surprise will be revealed when the countdown reaches zero!');
+      alert('Calm down! Your special surprise will be revealed at the right time!');
     }
   };
 
@@ -270,18 +283,21 @@ const Birthday = () => {
   if (error || !order) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50">
-        <div className="text-rose-500 text-2xl">Order not found</div>
+        <div className="text-rose-500 text-2xl">Event not found</div>
       </div>
     );
   }
 
-  const details = getBirthdayDetails();
+  const details = getEventDetails();
   const photos = details?.photos || [];
   const backgroundImage = details?.backgroundImage;
   const audioUrl = details?.audioUrl;
   const nickname = details?.nickname;
   const letter = details?.letter;
   const heartMessage = details?.heartMessage;
+  const eventTitle = details?.title || displayConfig.title;
+  const eventEmoji = details?.emoji || displayConfig.emoji;
+  const eventDefaultMessage = displayConfig.defaultMessage;
 
   // Default gallery images as fallback
   const defaultGalleryImages = [
@@ -293,7 +309,7 @@ const Birthday = () => {
     'https://images.unsplash.com/photo-1523438885200-e635ba2c371e?w=800&q=80'
   ];
 
-  const galleryImages = photos.length > 0 ? photos.map(p => p.url) : defaultGalleryImages;
+  const galleryImages = photos.length > 0 ? photos.map(p => p.url || p) : defaultGalleryImages;
 
   return (
     <div className="min-h-screen text-gray-800" style={{backgroundImage: `url(${backgroundImage})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed'}}>
@@ -329,7 +345,7 @@ const Birthday = () => {
       <section className="min-h-screen flex items-center justify-center text-center px-6 relative z-10">
         <div>
           <h1 className="text-5xl md:text-6xl font-bold romantic-font text-rose-400 mb-4">
-            To {nickname || 'You'} {config.emoji}
+            To {nickname || 'You'} {eventEmoji}
           </h1>
           <p className="text-white animate-pulse">Keep watching, beautiful ✨</p>
         </div>
@@ -338,10 +354,10 @@ const Birthday = () => {
       {/* Love Declaration */}
       <section className="py-16 text-center px-6 relative z-10" style={{background: 'rgba(255,255,255,0.85)'}}>
         <div className="max-w-3xl mx-auto">
-          <div className="text-6xl mb-6">{config.emoji}</div>
+          <div className="text-6xl mb-6">{eventEmoji}</div>
           <h2 className="text-4xl font-bold romantic-font gradient-text mb-6">{heartMessage}</h2>
           <p className="text-lg text-gray-600 leading-relaxed">
-            {letter || config.defaultMessage}
+            {letter || eventDefaultMessage}
           </p>
         </div>
       </section>
@@ -390,7 +406,7 @@ const Birthday = () => {
           <section className="py-16 text-center" style={{background: 'rgba(255,255,255,0.9)'}}>
             <div className="text-6xl mb-4">🎉</div>
             <h2 className="text-4xl font-bold romantic-font gradient-text">
-              {config.title}, {nickname}! {config.emoji}
+              {eventTitle}, {nickname}! {eventEmoji}
             </h2>
           </section>
 
@@ -414,55 +430,54 @@ const Birthday = () => {
 
            {/* Slideshow Link */}
            <section className="py-10 text-center" style={{background: 'rgba(255,255,255,0.85)'}}>
-             <div className="flex flex-col md:flex-row gap-4 justify-center">
-               <Link
-                 to={`/slideshow/${code}`}
-                 className="bg-gradient-to-r from-rose-500 to-pink-500 text-white font-bold py-3 px-6 rounded-full shadow-lg hover:scale-105 transition-transform inline-block"
-               >
-                 View Slideshow 🎬
-               </Link>
-             </div>
-           </section>
+            <div className="flex flex-col md:flex-row gap-4 justify-center">
+              <Link
+                to={`/slideshow/${code}`}
+                className="bg-gradient-to-r from-rose-500 to-pink-500 text-white font-bold py-3 px-6 rounded-full shadow-lg hover:scale-105 transition-transform inline-block"
+              >
+                View Slideshow 🎬
+              </Link>
+            </div>
+          </section>
 
-           {/* Received Gifts Section */}
-           {revealed && (
-             <section className="py-10 text-center px-6" style={{background: 'rgba(255,255,255,0.85)'}}>
-               <div className="max-w-4xl mx-auto">
-                 <h3 className="text-2xl font-bold romantic-font gradient-text mb-6">
-                   💝 Gifts Received ({receivedGifts.length})
-                 </h3>
-                 {receivedGifts.length === 0 ? (
-                   <p className="text-gray-500">
-                     No gifts received yet. Share your page link to start receiving gifts!
-                   </p>
-                 ) : (
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                     {receivedGifts.map((gift, index) => (
-                       <div key={index} className="bg-white rounded-2xl p-5 shadow-lg border-2 border-rose-100 text-left">
-                         <div className="flex items-start gap-3">
-                           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-rose-400 to-pink-400 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-                             {gift.name?.charAt(0).toUpperCase() || 'A'}
-                           </div>
-                           <div className="flex-1 min-w-0">
-                             <div className="font-bold text-gray-700 mb-1">
-                               {gift.name || 'Anonymous'}
-                             </div>
-                             <p className="text-gray-600 text-sm mb-2 leading-relaxed">
-                               {gift.message || 'No message'} 
-                             </p>
-                             <div className="text-xs text-gray-400">
-                               {gift.date ? new Date(gift.date).toLocaleString() : 'Just now'}
-                             </div>
-                           </div>
-                         </div>
-                       </div>
-                     ))}
-                   </div>
-                 )}
-               </div>
-             </section>
-           )}
-
+          {/* Received Gifts Section */}
+          {revealed && (
+            <section className="py-10 text-center px-6" style={{background: 'rgba(255,255,255,0.85)'}}>
+              <div className="max-w-4xl mx-auto">
+                <h3 className="text-2xl font-bold romantic-font gradient-text mb-6">
+                  💝 Gifts Received ({receivedGifts.length})
+                </h3>
+                {receivedGifts.length === 0 ? (
+                  <p className="text-gray-500">
+                    No gifts received yet. Share your page link to start receiving gifts!
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {receivedGifts.map((gift, index) => (
+                      <div key={index} className="bg-white rounded-2xl p-5 shadow-lg border-2 border-rose-100 text-left">
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-rose-400 to-pink-400 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+                            {gift.name?.charAt(0).toUpperCase() || 'A'}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-bold text-gray-700 mb-1">
+                              {gift.name || 'Anonymous'}
+                            </div>
+                            <p className="text-gray-600 text-sm mb-2 leading-relaxed">
+                              {gift.message || 'No message'} 
+                            </p>
+                            <div className="text-xs text-gray-400">
+                              {gift.date ? new Date(gift.date).toLocaleString() : 'Just now'}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
 
         </div>
       )}

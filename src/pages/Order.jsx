@@ -227,6 +227,12 @@ function Order() {
         
         // FREE tier doesn't need payment - go directly to confirmation
         if (selectedPackage === 'free') {
+            // Validate birthday date before processing
+            if (!birthdayDate) {
+                alert('Please select the birthday date!')
+                setIsProcessing(false)
+                return
+            }
             processOrder()
         } else {
             setShowPayment(true)
@@ -238,21 +244,29 @@ function Order() {
         if (selectedPackage === 'free') {
             setIsProcessing(true)
 
+            // Final validation before insertion
+            if (!birthdayDate) {
+                alert('Please select the birthday date!')
+                setIsProcessing(false)
+                return
+            }
+
             // Generate unique code
             const code = generateCode()
             setOrderCode(code)
 
-            // Save order to localStorage
-            const order = {
-                code,
-                recipientName: recipientName.trim(),
-                birthdayDate,
-                giverName: giverName.trim(),
-                giverPhone: giverPhone.trim(),
-                package: selectedPackage,
-                status: 'active', // Free tier is immediately active
-                createdAt: new Date().toISOString()
-            }
+             // Save order to localStorage
+             const order = {
+                 code,
+                 recipient_name: recipientName.trim(),
+                 birthday_date: birthdayDate,
+                 giver_name: giverName.trim(),
+                 giver_phone: giverPhone.trim(),
+                 package: selectedPackage,
+                 page_type: 'birthday',
+                 status: 'active', // Free tier is immediately active
+                 created_at: new Date().toISOString()
+             }
 
             // Save to localStorage
             const orders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]')
@@ -262,6 +276,18 @@ function Order() {
             // Also save to Supabase for admin management - save FIRST, then localStorage as backup
             try {
                 console.log('=== DEBUG: Creating free order in Supabase ===')
+                // Final validation before Supabase insert
+                if (!birthdayDate) {
+                    console.log('Supabase save skipped - no birthday date')
+                    setIsProcessing(false)
+                    setStep(3)
+                    confetti({
+                        particleCount: 100,
+                        spread: 70,
+                        origin: { y: 0.6 }
+                    })
+                    return
+                }
                 const { data, error } = await supabase.from('orders').insert({
                     code: code,
                     recipient_name: recipientName.trim(),
@@ -270,6 +296,7 @@ function Order() {
                     giver_name: giverName.trim(),
                     giver_phone: giverPhone.trim(),
                     package: selectedPackage,
+                    page_type: 'birthday',
                     status: 'active',
                     price: 0,
                     user_id: user?.id || null,
@@ -330,17 +357,18 @@ function Order() {
         const code = generateCode()
         setOrderCode(code)
 
-        // Save order to localStorage (in real app, would save to Supabase)
-        const order = {
-            code,
-            recipientName: recipientName.trim(),
-            birthdayDate,
-            giverName: giverName.trim(),
-            giverPhone: giverPhone.trim(),
-            package: selectedPackage,
-            status: 'pending',
-            createdAt: new Date().toISOString()
-        }
+             // Save order to localStorage (in real app, would save to Supabase)
+             const order = {
+                 code,
+                 recipient_name: recipientName.trim(),
+                 birthday_date: birthdayDate,
+                 giver_name: giverName.trim(),
+                 giver_phone: giverPhone.trim(),
+                 package: selectedPackage,
+                 page_type: 'birthday',
+                 status: 'pending',
+                 created_at: new Date().toISOString()
+             }
 
         // Save to localStorage
         const orders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]')
@@ -350,6 +378,18 @@ function Order() {
         // Also save to Supabase for admin management - save FIRST
         try {
             console.log('=== DEBUG: Creating paid order in Supabase ===')
+            // Final validation before Supabase insert
+            if (!birthdayDate) {
+                console.log('Supabase save skipped - no birthday date')
+                setIsProcessing(false)
+                setStep(3)
+                confetti({
+                    particleCount: 100,
+                    spread: 70,
+                    origin: { y: 0.6 }
+                })
+                return
+            }
             const { data, error } = await supabase.from('orders').insert({
                 code: code,
                 recipient_name: recipientName.trim(),
@@ -358,6 +398,7 @@ function Order() {
                 giver_name: giverName.trim(),
                 giver_phone: giverPhone.trim(),
                 package: selectedPackage,
+                page_type: 'birthday',
                 status: 'pending',
                 price: selectedPackage === 'premium' ? 100 : (selectedPackage === 'basic' ? 50 : 0),
                 user_id: user?.id || null,

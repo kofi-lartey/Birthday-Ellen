@@ -2,6 +2,215 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase, STORAGE_KEYS } from '../supabase'
 import { usePackage, DEFAULT_PACKAGES } from '../hooks/usePackage.jsx'
+import { getEventSchema, getEventFields, transformFormData, validateFormData } from '../config/eventSchemas'
+import { getEventDisplay } from '../config/orderTypeMapping'
+
+// Dynamic field renderer for event-specific forms
+function DynamicFieldRenderer({ field, value, onChange, onFileUpload, maxPhotos, currentPhotosCount }) {
+    const { name, label, type, accept, placeholder, helpText, rows, options, max } = field
+
+    const handleChange = (e) => {
+        const newValue = type === 'checkbox' ? e.target.checked : e.target.value
+        onChange(name, newValue)
+    }
+
+    const handleFileChange = async (e) => {
+        if (onFileUpload) {
+            await onFileUpload(e, name)
+        }
+    }
+
+    const baseInputClass = "w-full p-3 border-2 border-rose-200 rounded-xl text-sm"
+
+    switch (type) {
+        case 'text':
+        case 'date':
+        case 'time':
+        case 'tel':
+        case 'url':
+            return (
+                <div key={name}>
+                    <label className="block text-gray-600 mb-2">{label} {field.required && <span className="text-red-500">*</span>}</label>
+                    <input
+                        type={type}
+                        value={value || ''}
+                        onChange={handleChange}
+                        className={baseInputClass}
+                        placeholder={placeholder}
+                    />
+                    {helpText && <p className="text-xs text-gray-500 mt-1">{helpText}</p>}
+                </div>
+            )
+
+        case 'textarea':
+            return (
+                <div key={name}>
+                    <label className="block text-gray-600 mb-2">{label} {field.required && <span className="text-red-500">*</span>}</label>
+                    <textarea
+                        value={value || ''}
+                        onChange={handleChange}
+                        className={baseInputClass}
+                        placeholder={placeholder}
+                        rows={rows || 4}
+                    />
+                    {helpText && <p className="text-xs text-gray-500 mt-1">{helpText}</p>}
+                </div>
+            )
+
+        case 'checkbox':
+            return (
+                <div key={name} className="flex items-start gap-3 p-3 border-2 border-rose-200 rounded-xl">
+                    <input
+                        type="checkbox"
+                        checked={value || false}
+                        onChange={handleChange}
+                        className="mt-1 w-5 h-5 accent-rose-500"
+                    />
+                    <div>
+                        <label className="text-gray-700 font-medium">{label}</label>
+                        {helpText && <p className="text-xs text-gray-500 mt-1">{helpText}</p>}
+                    </div>
+                </div>
+            )
+
+        case 'file-image':
+            return (
+                <div key={name}>
+                    <label className="block text-gray-600 mb-2">{label}</label>
+                    <div className="space-y-2">
+                        <input
+                            type="file"
+                            accept={accept}
+                            onChange={handleFileChange}
+                            className="w-full p-2 border-2 border-rose-200 rounded-xl text-sm"
+                        />
+                        <p className="text-xs text-gray-500 text-center">or enter URL below</p>
+                        <input
+                            type="url"
+                            value={value || ''}
+                            onChange={handleChange}
+                            className={baseInputClass}
+                            placeholder={placeholder}
+                        />
+                    </div>
+                    {value && (
+                        <img
+                            src={value}
+                            alt="Preview"
+                            className="mt-2 w-full h-32 object-cover rounded-xl"
+                            onError={(e) => e.target.style.display = 'none'}
+                        />
+                    )}
+                    {helpText && <p className="text-xs text-gray-500 mt-1">{helpText}</p>}
+                </div>
+            )
+
+        case 'file-audio':
+            return (
+                <div key={name}>
+                    <label className="block text-gray-600 mb-2">{label}</label>
+                    <div className="space-y-2">
+                        <input
+                            type="file"
+                            accept={accept}
+                            onChange={handleFileChange}
+                            className="w-full p-2 border-2 border-rose-200 rounded-xl text-sm"
+                        />
+                        <p className="text-xs text-gray-500 text-center">or enter URL below</p>
+                        <input
+                            type="url"
+                            value={value || ''}
+                            onChange={handleChange}
+                            className={baseInputClass}
+                            placeholder={placeholder}
+                        />
+                    </div>
+                    {helpText && <p className="text-xs text-gray-500 mt-1">{helpText}</p>}
+                </div>
+            )
+
+        case 'photo-uploader':
+            return (
+                <div key={name}>
+                    <label className="block text-gray-600 mb-2">
+                        {label} ({currentPhotosCount || 0}/{maxPhotos}) - Max 5MB each
+                    </label>
+                    <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handleFileChange}
+                        disabled={(currentPhotosCount || 0) >= maxPhotos}
+                        className="w-full p-2 border-2 border-rose-200 rounded-xl text-sm"
+                    />
+                    {helpText && <p className="text-xs text-gray-500 mt-1">{helpText}</p>}
+                </div>
+            )
+
+        case 'select':
+            return (
+                <div key={name}>
+                    <label className="block text-gray-600 mb-2">{label}</label>
+                    <select
+                        value={value || ''}
+                        onChange={handleChange}
+                        className={baseInputClass}
+                    >
+                        <option value="">{placeholder || 'Select...'}</option>
+                        {options?.map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                    </select>
+                </div>
+            )
+
+        case 'custom-fields':
+            return (
+                <div key={name}>
+                    <label className="block text-gray-600 mb-2">{label}</label>
+                    <div className="space-y-3">
+                        {field.fields?.map(subField => (
+                            <div key={subField.name}>
+                                <label className="block text-gray-600 mb-1 text-sm">{subField.label}</label>
+                                {subField.type === 'textarea' ? (
+                                    <textarea
+                                        value={value?.[subField.name] || ''}
+                                        onChange={(e) => onChange(`${name}.${subField.name}`, e.target.value)}
+                                        className={baseInputClass}
+                                        placeholder={subField.placeholder}
+                                        rows={subField.rows || 3}
+                                    />
+                                ) : (
+                                    <input
+                                        type={subField.type}
+                                        value={value?.[subField.name] || ''}
+                                        onChange={(e) => onChange(`${name}.${subField.name}`, e.target.value)}
+                                        className={baseInputClass}
+                                        placeholder={subField.placeholder}
+                                    />
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                    {helpText && <p className="text-xs text-gray-500 mt-1">{helpText}</p>}
+                </div>
+            )
+
+        default:
+            return (
+                <div key={name}>
+                    <label className="block text-gray-600 mb-2">{label}</label>
+                    <input
+                        type="text"
+                        value={value || ''}
+                        onChange={handleChange}
+                        className={baseInputClass}
+                        placeholder={placeholder}
+                    />
+                </div>
+            )
+    }
+}
 
 function Dashboard() {
     const navigate = useNavigate()
@@ -13,7 +222,7 @@ function Dashboard() {
     const [selectedOrderForGift, setSelectedOrderForGift] = useState(null)
     const [showGiftOptions, setShowGiftOptions] = useState(false)
     const [recipientName, setRecipientName] = useState('')
-    const [birthdayDate, setBirthdayDate] = useState('')
+    const [eventDate, setEventDate] = useState('')
     const [selectedPackage, setSelectedPackage] = useState('free')
     const [pageType, setPageType] = useState('birthday')
     const [paymentPending, setPaymentPending] = useState(false)
@@ -26,16 +235,29 @@ function Dashboard() {
         return true
     }
 
-    // Birthday Details state
-    const [birthdayDetails, setBirthdayDetails] = useState({
-        backgroundImage: '',
-        heartMessage: 'My heart belongs to you',
-        dateOfBirth: '',
-        letter: '',
-        nickname: '',
-        audioUrl: '',
-        photos: []
-    })
+    const logout = () => {
+        localStorage.removeItem(STORAGE_KEYS.CURRENT_USER)
+        supabase.auth.signOut().catch(() => { })
+        navigate('/login')
+    }
+
+    // Event type color mappings
+    const getEventColorClasses = (eventType) => {
+        const colors = {
+            birthday: { bg: 'from-rose-50 to-pink-50', border: 'border-rose-100', iconBg: 'from-rose-400 to-pink-500', badge: 'bg-rose-200 text-rose-700' },
+            wedding: { bg: 'from-pink-50 to-rose-100', border: 'border-pink-200', iconBg: 'from-pink-400 to-rose-500', badge: 'bg-pink-200 text-pink-700' },
+            anniversary: { bg: 'from-red-50 to-rose-100', border: 'border-red-200', iconBg: 'from-red-400 to-rose-500', badge: 'bg-red-200 text-red-700' },
+            party: { bg: 'from-purple-50 to-indigo-100', border: 'border-purple-200', iconBg: 'from-purple-400 to-indigo-500', badge: 'bg-purple-200 text-purple-700' },
+            hangout: { bg: 'from-blue-50 to-cyan-100', border: 'border-blue-200', iconBg: 'from-blue-400 to-cyan-500', badge: 'bg-blue-200 text-blue-700' },
+            other: { bg: 'from-gray-50 to-gray-100', border: 'border-gray-200', iconBg: 'from-gray-400 to-gray-500', badge: 'bg-gray-200 text-gray-700' },
+            graduation: { bg: 'from-blue-50 to-indigo-100', border: 'border-blue-200', iconBg: 'from-blue-400 to-indigo-500', badge: 'bg-blue-200 text-blue-700' }
+        }
+        return colors[eventType] || colors.birthday
+    }
+
+    // Dynamic Event Details state
+    const [birthdayDetails, setBirthdayDetails] = useState({})
+    const [currentEventType, setCurrentEventType] = useState('birthday')
     const [showShareLink, setShowShareLink] = useState(false)
     const [shareLinkCopied, setShareLinkCopied] = useState(false)
 
@@ -99,7 +321,7 @@ function Dashboard() {
     function loadUserOrders(userOrId) {
         const userId = typeof userOrId === 'object' ? userOrId.id : userOrId
         const allOrders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]')
-        
+
         const filteredLocalOrders = allOrders.filter(order =>
             !order.userId ||
             order.userId === userId ||
@@ -151,10 +373,7 @@ function Dashboard() {
         }
     }
 
-    function logout() {
-        localStorage.removeItem(STORAGE_KEYS.CURRENT_USER)
-        navigate('/')
-    }
+
 
     async function syncToSupabase() {
         const allOrders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]')
@@ -210,8 +429,8 @@ function Dashboard() {
         return code
     }
 
-    async function createBirthdayPage() {
-        if (!recipientName.trim() || !birthdayDate) {
+    async function createEventPage() {
+        if (!recipientName.trim() || !eventDate) {
             alert('Please fill in all fields')
             return
         }
@@ -220,9 +439,9 @@ function Dashboard() {
 
         const allowedPageTypes = {
             free: ['birthday'],
-            basic: ['birthday', 'wedding'],
-            premium: ['birthday', 'wedding', 'anniversary', 'graduation'],
-            enterprise: ['birthday', 'wedding', 'anniversary', 'graduation', 'custom']
+            basic: ['birthday', 'wedding', 'hangout'],
+            premium: ['birthday', 'wedding', 'anniversary', 'graduation', 'party'],
+            enterprise: ['birthday', 'wedding', 'anniversary', 'graduation', 'custom', 'party', 'hangout']
         }
         if (!allowedPageTypes[userTier]?.includes(pageType)) {
             alert(`Your current package (${userTier}) does not allow creating ${pageType} pages. Please upgrade your package.`)
@@ -241,63 +460,185 @@ function Dashboard() {
             return
         }
 
-        const code = generateCode()
+        const code = pageType === 'birthday' ? generateCode() : null
 
-        const newOrder = {
-            id: Date.now(),
-            userId: user?.id || 'guest',
-            code,
-            recipientName: recipientName.trim(),
-            birthdayDate,
-            pageType: pageType,
-            package: user?.package_tier || 'free',
-            price: user?.package_tier === 'premium' ? 10 : (user?.package_tier === 'basic' ? 5 : 0),
-            status: user?.package_tier === 'free' ? 'active' : 'pending',
-            createdAt: new Date().toISOString(),
-            birthdayDetails: {
-                backgroundImage: '',
-                heartMessage: 'My heart belongs to you',
-                dateOfBirth: '',
-                letter: '',
-                nickname: '',
-                audioUrl: '',
-                photos: []
-            }
-        }
+        const schema = getEventSchema(pageType)
+        const tableName = schema.table
 
-        const allOrders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]')
-        allOrders.push(newOrder)
-        localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(allOrders))
-
-        try {
-            const { error: supabaseError } = await supabase.from('orders').insert([{
+        if (pageType === 'birthday') {
+            const newOrder = {
+                id: Date.now(),
+                registryId: null,
+                eventType: pageType,
+                eventId: null,
+                recipientName: recipientName.trim(),
+                eventDate: eventDate,
+                details: {
+                    backgroundImage: '',
+                    heartMessage: 'My heart belongs to you',
+                    dateOfBirth: '',
+                    letter: '',
+                    nickname: '',
+                    audioUrl: '',
+                    photos: []
+                },
+                hasDetails: false,
+                status: 'active',
+                package: user?.package_tier || 'free',
+                isLegacy: true,
                 code: code,
-                user_id: user?.id,
-                recipient_name: newOrder.recipientName,
-                birthday_date: newOrder.birthdayDate,
-                page_type: pageType,
-                package: newOrder.package,
-                status: newOrder.status,
-                created_at: new Date().toISOString()
-            }])
-
-            if (supabaseError) {
-                console.log('Supabase save error:', supabaseError.message)
-            } else {
-                console.log('Saved to Supabase!')
+                createdAt: new Date().toISOString()
             }
-        } catch (err) {
-            console.log('Could not save to Supabase:', err)
+
+            const registryData = {
+                user_id: user?.id,
+                event_type: 'birthday',
+                event_name: recipientName.trim(),
+                event_date: eventDate,
+                is_public: false
+            }
+            try {
+                const { error: registryError } = await supabase
+                    .from('event_registry')
+                    .insert([registryData])
+                if (registryError) console.log('Registry insert error:', registryError.message)
+            } catch (err) {
+                console.log('Registry insert failed:', err)
+            }
+
+            setOrders(prev => [...prev, newOrder])
+            setShowCreateModal(false)
+            setRecipientName('')
+            setEventDate('')
+            setSelectedPackage('free')
+            setPageType('birthday')
+
+            alert(`Birthday page created! Code: ${code}\n\nShare this link with ${recipientName}:\n${window.location.origin}/birthday/${code}`)
+            return
         }
 
-        setOrders([...orders, newOrder])
+        // For non-birthday event types
+        const defaultValues = getDefaultValuesForType(pageType)
+        
+        // Validate required fields
+        if (pageType === 'wedding' && !eventDate) {
+            alert('Please select a wedding date')
+            return
+        }
+        if (pageType === 'anniversary' && !eventDate) {
+            alert('Please select an anniversary date')
+            return
+        }
+        if (pageType === 'party' && !eventDate) {
+            alert('Please select a party date')
+            return
+        }
+        if (pageType === 'hangout' && !eventDate) {
+            alert('Please select a hangout date')
+            return
+        }
+        if (pageType === 'other' && !eventDate) {
+            alert('Please select an event date')
+            return
+        }
+        
+        // Update date in defaultValues with the selected eventDate
+        const dateFields = {
+            wedding: 'wedding_date',
+            anniversary: 'anniversary_date',
+            party: 'party_date',
+            hangout: 'hangout_date',
+            other: 'event_date'
+        }
+        if (dateFields[pageType]) {
+            defaultValues[dateFields[pageType]] = eventDate
+        }
+        
+        const { data: eventResult, error: eventError } = await supabase
+            .from(tableName)
+            .insert({
+                user_id: user?.id,
+                ...defaultValues,
+                created_at: new Date().toISOString()
+            })
+            .select('id')
+            .single()
+
+        if (eventError || !eventResult) {
+            console.error('Failed to create event:', eventError)
+            
+            // Provide user-friendly error messages
+            let userMessage = 'Failed to create event. '
+            
+            if (eventError?.code === '22007') {
+                userMessage += 'Invalid date format. Please check the date fields.'
+            } else if (eventError?.code === '23503') {
+                userMessage += 'Database constraint violation. Please try again.'
+            } else if (eventError?.code === '42P01') {
+                userMessage += 'Table does not exist. Please contact support.'
+            } else if (eventError?.code === '23505') {
+                userMessage += 'Duplicate entry detected. Please try again.'
+            } else if (eventError?.message?.includes('date')) {
+                userMessage += 'Invalid date value. Please check the date fields.'
+            } else {
+                userMessage += 'Please try again or contact support.'
+            }
+            
+            alert(userMessage)
+            return
+        }
+
+        const { data: registryResult, error: registryError } = await supabase
+            .from('event_registry')
+            .insert({
+                user_id: user?.id,
+                event_type: pageType,
+                event_name: recipientName.trim(),
+                event_date: eventDate,
+                event_id: eventResult.id,
+                is_public: false
+            })
+            .select('*')
+            .single()
+
+        if (registryError) {
+            console.error('Failed to create registry entry:', registryError)
+        }
+
+        const newEvent = {
+            id: registryResult?.id || eventResult.id,
+            registryId: registryResult?.id,
+            eventType: pageType,
+            eventId: eventResult.id,
+            recipientName: recipientName.trim(),
+            eventDate: eventDate,
+            details: { ...defaultValues, id: eventResult.id },
+            hasDetails: false,
+            status: 'active',
+            isPublic: false,
+            isLegacy: false,
+            createdAt: new Date().toISOString()
+        }
+
+        setOrders(prev => [...prev, newEvent])
         setShowCreateModal(false)
         setRecipientName('')
-        setBirthdayDate('')
+        setEventDate('')
         setSelectedPackage('free')
         setPageType('birthday')
 
-        alert(`Birthday page created! Code: ${code}\n\nShare this link with ${recipientName}:\n${window.location.origin}/birthday/${code}`)
+        alert(`${pageType.charAt(0).toUpperCase() + pageType.slice(1)} page created!`)
+    }
+
+    function getDefaultValuesForType(eventType) {
+        const defaults = {
+            wedding: { couple_names: '', wedding_date: null, venue: '', guest_count: null, theme: '', is_public: false },
+            anniversary: { couple_names: '', anniversary_date: null, years_married: null, special_memory: '', is_public: false },
+            party: { party_name: '', party_date: null, party_time: '', theme: '', guest_count: null, is_public: false },
+            hangout: { hangout_name: '', hangout_date: null, hangout_time: '', who_coming: '', expected_people: null, location: '', vibe: 'Chill', is_public: false },
+            other: { event_name: '', event_date: null, event_time: '', event_category: '', description: '', custom_fields: {}, is_public: false }
+        }
+        return defaults[eventType] || {}
     }
 
     function getMaxPhotos(packageType) {
@@ -311,67 +652,79 @@ function Dashboard() {
         return maxPhotosPerTier[tier] || 5
     }
 
-    function openBirthdayDetails(order) {
+    function openEventDetails(order) {
         setSelectedOrder(order)
-        setBirthdayDetails(order.birthdayDetails || {
-            backgroundImage: '',
-            heartMessage: 'My heart belongs to you',
-            dateOfBirth: '',
-            letter: '',
-            nickname: '',
-            audioUrl: '',
-            photos: []
+        setCurrentEventType(order.eventType)
+        const schema = getEventSchema(order.eventType)
+        const defaults = {}
+        schema.detailFields.forEach(field => {
+            const fieldName = field.name
+            const value = order.details?.[fieldName] ?? (field.type === 'checkbox' ? false : field.default || '')
+            defaults[fieldName] = value
         })
+        setBirthdayDetails(defaults)
         setShowDetailsModal(true)
     }
 
-    async function saveBirthdayDetails() {
+    async function saveEventDetails() {
         if (!selectedOrder) return
 
-        const updatedOrders = orders.map(o => {
-            if (o.code === selectedOrder.code) {
-                return { ...o, birthdayDetails: birthdayDetails, letter: birthdayDetails.letter, nickname: birthdayDetails.nickname, heartMessage: birthdayDetails.heartMessage, backgroundImage: birthdayDetails.backgroundImage, audioUrl: birthdayDetails.audioUrl }
-            }
-            return o
-        })
+        const schema = getEventSchema(currentEventType)
+        const tableName = schema.table
 
-        const allOrders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]')
-        const updatedAllOrders = allOrders.map(o => {
-            if (o.code === selectedOrder.code) {
-                return { ...o, birthdayDetails: birthdayDetails, letter: birthdayDetails.letter, nickname: birthdayDetails.nickname, heartMessage: birthdayDetails.heartMessage, backgroundImage: birthdayDetails.backgroundImage, audioUrl: birthdayDetails.audioUrl }
+        // Prepare data for database
+        const dbData = {}
+        Object.entries(birthdayDetails).forEach(([key, value]) => {
+            const fieldDef = schema.detailFields.find(f => f.name === key)
+            if (!fieldDef) return
+            const columnMap = {
+                backgroundImage: 'background_image',
+                heartMessage: 'heart_message',
+                dateOfBirth: 'date_of_birth',
+                audioUrl: 'audio_url'
             }
-            return o
+            const column = columnMap[key] || key
+            if (Array.isArray(value)) {
+                dbData[column] = JSON.stringify(value)
+            } else if (key === 'is_public' || key === 'DJ_provided' || key === 'drinks_provided') {
+                dbData[column] = Boolean(value)
+            } else if (key === 'custom_fields' && typeof value === 'object') {
+                dbData[column] = JSON.stringify(value)
+            } else {
+                dbData[column] = value
+            }
         })
-        localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(updatedAllOrders))
+        dbData.updated_at = new Date().toISOString()
 
         try {
+            const idValue = selectedOrder.eventId || selectedOrder.id
             const { error } = await supabase
-                .from('orders')
-                .update({
-                    user_id: user?.id,
-                    background_image: birthdayDetails.backgroundImage,
-                    heart_message: birthdayDetails.heartMessage,
-                    date_of_birth: birthdayDetails.dateOfBirth,
-                    letter: birthdayDetails.letter,
-                    nickname: birthdayDetails.nickname,
-                    audio_url: birthdayDetails.audioUrl,
-                    photos: JSON.stringify(birthdayDetails.photos),
-                    updated_at: new Date().toISOString()
-                })
-                .eq('code', selectedOrder.code)
+                .from(tableName)
+                .update(dbData)
+                .eq('id', idValue)
 
             if (error) {
                 console.log('Supabase update error:', error.message)
-            } else {
-                console.log('Updated order successfully in Supabase!')
+                alert('Failed to save details: ' + error.message)
+                return
             }
+            console.log('Updated event details successfully in Supabase!')
         } catch (err) {
             console.log('Could not save to Supabase:', err)
+            alert('Error saving details')
         }
 
-        setOrders(updatedOrders)
+        setOrders(prevOrders => {
+            return prevOrders.map(o => {
+                if (o.id === selectedOrder.id) {
+                    return { ...o, details: { ...o.details, ...birthdayDetails }, hasDetails: true }
+                }
+                return o
+            })
+        })
+
         setShowDetailsModal(false)
-        alert('Birthday details saved successfully!')
+        alert('Event details saved successfully!')
     }
 
     async function handlePhotoUpload(e) {
@@ -635,7 +988,7 @@ function Dashboard() {
                                             👁️ View Page
                                         </Link>
                                         <button
-                                            onClick={() => openBirthdayDetails(order)}
+                                            onClick={() => openEventDetails(order)}
                                             className="text-xs bg-amber-500 text-white px-3 py-2 rounded-full hover:bg-amber-600 transition"
                                         >
                                             ✏️ {order.birthdayDetails?.letter || order.birthdayDetails?.nickname ? 'Edit Details' : 'Add Details'}
@@ -684,8 +1037,8 @@ function Dashboard() {
                                     <button
                                         onClick={() => setPageType('birthday')}
                                         className={`p-2 rounded-lg border-2 transition text-center ${pageType === 'birthday'
-                                                ? 'border-rose-500 bg-rose-50'
-                                                : 'border-gray-200 hover:border-rose-300'
+                                            ? 'border-rose-500 bg-rose-50'
+                                            : 'border-gray-200 hover:border-rose-300'
                                             }`}
                                     >
                                         <div className="text-xl mb-1">🎂</div>
@@ -696,8 +1049,8 @@ function Dashboard() {
                                         <button
                                             onClick={() => setPageType('wedding')}
                                             className={`p-2 rounded-lg border-2 transition text-center ${pageType === 'wedding'
-                                                    ? 'border-rose-500 bg-rose-50'
-                                                    : 'border-gray-200 hover:border-rose-300'
+                                                ? 'border-rose-500 bg-rose-50'
+                                                : 'border-gray-200 hover:border-rose-300'
                                                 }`}
                                         >
                                             <div className="text-xl mb-1">💒</div>
@@ -717,8 +1070,8 @@ function Dashboard() {
                                         <button
                                             onClick={() => setPageType('anniversary')}
                                             className={`p-2 rounded-lg border-2 transition text-center ${pageType === 'anniversary'
-                                                    ? 'border-rose-500 bg-rose-50'
-                                                    : 'border-gray-200 hover:border-rose-300'
+                                                ? 'border-rose-500 bg-rose-50'
+                                                : 'border-gray-200 hover:border-rose-300'
                                                 }`}
                                         >
                                             <div className="text-xl mb-1">💕</div>
@@ -738,8 +1091,8 @@ function Dashboard() {
                                         <button
                                             onClick={() => setPageType('graduation')}
                                             className={`p-2 rounded-lg border-2 transition text-center ${pageType === 'graduation'
-                                                    ? 'border-rose-500 bg-rose-50'
-                                                    : 'border-gray-200 hover:border-rose-300'
+                                                ? 'border-rose-500 bg-rose-50'
+                                                : 'border-gray-200 hover:border-rose-300'
                                                 }`}
                                         >
                                             <div className="text-xl mb-1">🎓</div>
@@ -759,8 +1112,8 @@ function Dashboard() {
                                         <button
                                             onClick={() => setPageType('custom')}
                                             className={`p-2 rounded-lg border-2 transition text-center ${pageType === 'custom'
-                                                    ? 'border-rose-500 bg-rose-50'
-                                                    : 'border-gray-200 hover:border-rose-300'
+                                                ? 'border-rose-500 bg-rose-50'
+                                                : 'border-gray-200 hover:border-rose-300'
                                                 }`}
                                         >
                                             <div className="text-xl mb-1">✨</div>
@@ -812,8 +1165,8 @@ function Dashboard() {
                                 <label className="block text-gray-600 mb-1 text-sm">Event Date</label>
                                 <input
                                     type="date"
-                                    value={birthdayDate}
-                                    onChange={(e) => setBirthdayDate(e.target.value)}
+                                    value={eventDate}
+                                    onChange={(e) => setEventDate(e.target.value)}
                                     className="w-full p-2 border-2 border-rose-200 rounded-xl text-sm"
                                 />
                             </div>
@@ -835,7 +1188,7 @@ function Dashboard() {
 
                         <div className="flex gap-2 mt-4">
                             <button
-                                onClick={createBirthdayPage}
+                                onClick={createEventPage}
                                 className="flex-1 bg-rose-500 text-white py-2 px-4 rounded-xl font-semibold text-sm"
                             >
                                 Create {pageType === 'birthday' ? 'Birthday' : pageType === 'wedding' ? 'Wedding' : pageType === 'anniversary' ? 'Anniversary' : pageType === 'graduation' ? 'Graduation' : 'Custom'} Page
@@ -853,163 +1206,92 @@ function Dashboard() {
 
             {/* Birthday Details Modal */}
             {showDetailsModal && selectedOrder && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-                    <div className="bg-white rounded-3xl p-6 max-w-2xl w-full my-8">
-                        <h3 className="text-xl font-bold text-gray-700 mb-2">Birthday Details</h3>
-                        <p className="text-sm text-gray-500 mb-4">for {selectedOrder.recipientName} ({selectedOrder.package} package - max {getMaxPhotos(selectedOrder.package)} photos)</p>
+                <div
+                    className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto"
+                    onClick={() => setShowDetailsModal(false)}
+                >
+                    <div
+                        className="bg-white rounded-3xl p-6 max-w-2xl w-full my-8 relative"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Close button */}
+                        <button
+                            onClick={() => setShowDetailsModal(false)}
+                            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition text-2xl"
+                            aria-label="Close"
+                        >
+                            ✕
+                        </button>
+
+                        <h3 className="text-xl font-bold text-gray-700 mb-2">
+                            {getEventDisplay(currentEventType).celebrationName} Details
+                        </h3>
+                        <p className="text-sm text-gray-500 mb-4">
+                            for {selectedOrder.recipientName} ({user?.package_tier?.toUpperCase() || 'FREE'} package)
+                        </p>
 
                         <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-                            {/* Background Image */}
-                            <div>
-                                <label className="block text-gray-600 mb-2">Main Background Image</label>
-                                <div className="space-y-2">
-                                    <input
-                                        type="file"
-                                        accept="image/*"
-                                        onChange={handleBackgroundImageUpload}
-                                        className="w-full p-3 border-2 border-rose-200 rounded-xl"
+                            {/* Dynamic fields based on event type */}
+                            {(() => {
+                                const schema = getEventSchema(currentEventType)
+                                return schema.detailFields.map(field => (
+                                    <DynamicFieldRenderer
+                                        key={field.name}
+                                        field={field}
+                                        value={birthdayDetails[field.name]}
+                                        onChange={(name, val) => {
+                                            setBirthdayDetails(prev => ({ ...prev, [name]: val }))
+                                        }}
+                                        onFileUpload={async (e, fieldName) => {
+                                            // Handle file uploads for image/audio fields
+                                            const file = e.target.files[0]
+                                            if (!file) return
+                                            const isAudio = field.type === 'file-audio'
+                                            const resourceType = isAudio ? 'video' : 'image'
+                                            const maxSize = isAudio ? 10 * 1024 * 1024 : 5 * 1024 * 1024
+                                            if (file.size > maxSize) {
+                                                alert(`File must be less than ${maxSize / (1024 * 1024)}MB`)
+                                                return
+                                            }
+                                            const formData = new FormData()
+                                            formData.append('file', file)
+                                            formData.append('upload_preset', 'ml_default')
+                                            if (resourceType === 'video') formData.append('resource_type', 'video')
+                                            try {
+                                                const res = await fetch(`https://api.cloudinary.com/v1_1/djjgkezui/${resourceType}/upload`, {
+                                                    method: 'POST',
+                                                    body: formData
+                                                })
+                                                const data = await res.json()
+                                                if (data.secure_url) {
+                                                    setBirthdayDetails(prev => ({ ...prev, [fieldName]: data.secure_url }))
+                                                }
+                                            } catch (err) {
+                                                console.error('Upload error:', err)
+                                            }
+                                        }}
+                                        maxPhotos={getMaxPhotos(selectedOrder.package)}
+                                        currentPhotosCount={birthdayDetails.photos?.length || 0}
                                     />
-                                    <p className="text-xs text-gray-500 text-center">or enter URL below</p>
-                                    <input
-                                        type="url"
-                                        value={birthdayDetails.backgroundImage}
-                                        onChange={(e) => setBirthdayDetails({ ...birthdayDetails, backgroundImage: e.target.value })}
-                                        className="w-full p-3 border-2 border-rose-200 rounded-xl"
-                                        placeholder="https://example.com/background.jpg"
-                                    />
-                                </div>
-                                {birthdayDetails.backgroundImage && (
-                                    <img
-                                        src={birthdayDetails.backgroundImage}
-                                        alt="Background preview"
-                                        className="mt-2 w-full h-32 object-cover rounded-xl"
-                                        onError={(e) => e.target.style.display = 'none'}
-                                    />
-                                )}
-                            </div>
-
-                            {/* Heart Message */}
-                            <div>
-                                <label className="block text-gray-600 mb-2">Heart Message</label>
-                                <input
-                                    type="text"
-                                    value={birthdayDetails.heartMessage}
-                                    onChange={(e) => setBirthdayDetails({ ...birthdayDetails, heartMessage: e.target.value })}
-                                    className="w-full p-3 border-2 border-rose-200 rounded-xl"
-                                    placeholder="My heart belongs to you"
-                                />
-                            </div>
-
-                            {/* Nickname */}
-                            <div>
-                                <label className="block text-gray-600 mb-2">Nickname</label>
-                                <input
-                                    type="text"
-                                    value={birthdayDetails.nickname}
-                                    onChange={(e) => setBirthdayDetails({ ...birthdayDetails, nickname: e.target.value })}
-                                    className="w-full p-3 border-2 border-rose-200 rounded-xl"
-                                    placeholder="e.g., Babe, Love, My Queen..."
-                                />
-                            </div>
-
-                            {/* Date of Birth for Countdown */}
-                            <div>
-                                <label className="block text-gray-600 mb-2">Date of Birth (for countdown)</label>
-                                <input
-                                    type="date"
-                                    value={birthdayDetails.dateOfBirth}
-                                    onChange={(e) => setBirthdayDetails({ ...birthdayDetails, dateOfBirth: e.target.value })}
-                                    className="w-full p-3 border-2 border-rose-200 rounded-xl"
-                                />
-                            </div>
-
-                            {/* Letter */}
-                            <div>
-                                <label className="block text-gray-600 mb-2">Letter to the Birthday Person</label>
-                                <textarea
-                                    value={birthdayDetails.letter}
-                                    onChange={(e) => setBirthdayDetails({ ...birthdayDetails, letter: e.target.value })}
-                                    className="w-full p-3 border-2 border-rose-200 rounded-xl h-32"
-                                    placeholder="Write a heartfelt letter..."
-                                />
-                            </div>
-
-                            {/* Audio URL */}
-                            <div>
-                                <label className="block text-gray-600 mb-2">Background Music</label>
-                                <div className="space-y-2">
-                                    <input
-                                        type="file"
-                                        accept="audio/*"
-                                        onChange={handleAudioUpload}
-                                        className="w-full p-3 border-2 border-rose-200 rounded-xl"
-                                    />
-                                    <p className="text-xs text-gray-500 text-center">or enter URL below</p>
-                                    <input
-                                        type="url"
-                                        value={birthdayDetails.audioUrl}
-                                        onChange={(e) => setBirthdayDetails({ ...birthdayDetails, audioUrl: e.target.value })}
-                                        className="w-full p-3 border-2 border-rose-200 rounded-xl"
-                                        placeholder="https://example.com/song.mp3"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Photos */}
-                            <div>
-                                <label className="block text-gray-600 mb-2">
-                                    Photos ({birthdayDetails.photos.length}/{getMaxPhotos(selectedOrder.package)}) - Max 5MB each
-                                </label>
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    multiple
-                                    onChange={handlePhotoUpload}
-                                    className="w-full p-3 border-2 border-rose-200 rounded-xl"
-                                    disabled={birthdayDetails.photos.length >= getMaxPhotos(selectedOrder.package)}
-                                />
-                                <p className="text-xs text-gray-500 mt-1">
-                                    Photos will be tagged with "{selectedOrder.recipientName?.toLowerCase().replace(/\s+/g, '') || 'birthday'}" for tracking
-                                </p>
-
-                                {birthdayDetails.photos.length > 0 && (
-                                    <div className="grid grid-cols-3 gap-2 mt-3">
-                                        {birthdayDetails.photos.map((photo, index) => (
-                                            <div key={index} className="relative">
-                                                <img
-                                                    src={photo.url}
-                                                    alt={`Photo ${index + 1}`}
-                                                    className="w-full h-20 object-cover rounded-lg"
-                                                />
-                                                <button
-                                                    onClick={() => removePhoto(index)}
-                                                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center"
-                                                >
-                                                    ✕
-                                                </button>
-                                                <span className="absolute bottom-1 left-1 bg-black/50 text-white text-xs px-1 rounded">
-                                                    {photo.tag}
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+                                ))
+                            })()}
                         </div>
 
                         <div className="flex gap-3 mt-6">
                             <button
-                                onClick={saveBirthdayDetails}
+                                onClick={saveEventDetails}
                                 className="flex-1 bg-rose-500 text-white py-3 rounded-xl font-semibold"
                             >
                                 Save Details
                             </button>
-                            <button
-                                onClick={() => setShowShareLink(true)}
-                                className="px-6 bg-green-500 text-white py-3 rounded-xl font-semibold"
-                            >
-                                🔗 Share Link
-                            </button>
+                            {currentEventType === 'birthday' && (
+                                <button
+                                    onClick={() => setShowShareLink(true)}
+                                    className="px-6 bg-green-500 text-white py-3 rounded-xl font-semibold"
+                                >
+                                    🔗 Share Link
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -1063,7 +1345,7 @@ function Dashboard() {
                         <p className="text-center text-gray-500 text-sm mb-6">
                             Choose how you'd like to gift {selectedOrderForGift.recipientName}
                         </p>
-                        
+
                         <div className="space-y-4">
                             {/* Send a Code */}
                             <button
@@ -1080,7 +1362,7 @@ function Dashboard() {
                                 </div>
                                 <div className="text-gray-400">→</div>
                             </button>
-                            
+
                             {/* Scratch Card */}
                             <button
                                 onClick={() => {
@@ -1096,7 +1378,7 @@ function Dashboard() {
                                 </div>
                                 <div className="text-gray-400">→</div>
                             </button>
-                            
+
                             {/* Order Products */}
                             <button
                                 onClick={() => {
@@ -1113,7 +1395,7 @@ function Dashboard() {
                                 <div className="text-gray-400">→</div>
                             </button>
                         </div>
-                        
+
                         <div className="mt-6 text-center">
                             <button
                                 onClick={() => setShowGiftOptions(false)}

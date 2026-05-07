@@ -45,7 +45,17 @@ function OrderUpload() {
         const localOrder = orders.find(o => o.code.toLowerCase() === code?.toLowerCase())
 
         if (localOrder) {
-            setOrderConfig(localOrder)
+            // Normalize the order data to ensure consistent field names
+            const normalizedOrder = {
+                ...localOrder,
+                recipient_name: localOrder.recipient_name || localOrder.recipientName,
+                birthday_date: localOrder.birthday_date || localOrder.birthdayDate,
+                giver_name: localOrder.giver_name || localOrder.giverName,
+                giver_phone: localOrder.giver_phone || localOrder.giverPhone,
+                page_type: localOrder.page_type || localOrder.pageType,
+                created_at: localOrder.created_at || localOrder.createdAt
+            };
+            setOrderConfig(normalizedOrder);
             return
         }
 
@@ -54,7 +64,7 @@ function OrderUpload() {
             const { data, error } = await supabase
                 .from('orders')
                 .select('*')
-                .eq('code', code)
+                .eq('code', code?.toUpperCase())
                 .limit(1);
 
             if (data && data.length > 0) {
@@ -151,9 +161,8 @@ function OrderUpload() {
         // Tag as 'gallery' for order-specific photos
         const tag = 'gallery'
 
-        const photoWithTag = { url, tag }
-
         setUploadedPhotos(prevPhotos => {
+            const photoWithTag = { url, tag }
             const newPhotos = [...prevPhotos, photoWithTag]
             localStorage.setItem(`${STORAGE_KEYS.PHOTOS}_${code}`, JSON.stringify(newPhotos))
             return newPhotos
@@ -306,27 +315,27 @@ function OrderUpload() {
                         <div className="mt-6">
                             <h3 className="font-bold text-gray-700 mb-3">Your Uploads 📷</h3>
                             <div className="grid grid-cols-2 gap-3">
-                                {uploadedPhotos.length === 0 ? (
-                                    <div className="col-span-2 text-center py-6 text-gray-400">
-                                        <p>No photos yet</p>
-                                    </div>
-                                ) : (
-                                    uploadedPhotos.map((url, index) => (
-                                        <div key={index} className="photo-card relative fade-in">
-                                            <img
-                                                src={url}
-                                                alt={`Photo ${index + 1}`}
-                                                className="w-full h-24 object-cover rounded-xl shadow-md"
-                                            />
-                                            <button
-                                                onClick={() => removePhoto(index)}
-                                                className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600"
-                                            >
-                                                ×
-                                            </button>
-                                        </div>
-                                    ))
-                                )}
+{uploadedPhotos.length === 0 ? (
+                                     <div className="col-span-2 text-center py-6 text-gray-400">
+                                         <p>No photos yet</p>
+                                     </div>
+                                 ) : (
+                                     uploadedPhotos.map((photo, index) => (
+                                         <div key={index} className="photo-card relative fade-in">
+                                             <img
+                                                 src={photo.url}
+                                                 alt={`Photo ${index + 1}`}
+                                                 className="w-full h-24 object-cover rounded-xl shadow-md"
+                                             />
+                                             <button
+                                                 onClick={() => removePhoto(index)}
+                                                 className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600"
+                                             >
+                                                 ×
+                                             </button>
+                                         </div>
+                                     ))
+                                 )}
                             </div>
                         </div>
                     </div>
@@ -349,17 +358,17 @@ function OrderUpload() {
 
                             <div className="mb-4">
                                 <label className="block text-gray-600 mb-2 font-semibold">Your Photo *</label>
-                                <select
-                                    value={selectedPhoto}
-                                    onChange={(e) => setSelectedPhoto(e.target.value)}
-                                    required
-                                    className="w-full p-3 border-2 border-rose-200 rounded-xl focus:outline-none focus:border-rose-400"
-                                >
-                                    <option value="">Select a photo you uploaded</option>
-                                    {uploadedPhotos.map((url, index) => (
-                                        <option key={index} value={url}>Photo {index + 1}</option>
-                                    ))}
-                                </select>
+<select
+                                     value={selectedPhoto}
+                                     onChange={(e) => setSelectedPhoto(e.target.value)}
+                                     required
+                                     className="w-full p-3 border-2 border-rose-200 rounded-xl focus:outline-none focus:border-rose-400"
+                                 >
+                                     <option value="">Select a photo you uploaded</option>
+                                     {uploadedPhotos.map((photo, index) => (
+                                         <option key={index} value={photo.url}>Photo {index + 1}</option>
+                                     ))}
+                                 </select>
                             </div>
 
                             <div className="mb-4">

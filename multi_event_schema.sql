@@ -8,7 +8,7 @@
 -- ============================================
 CREATE TABLE IF NOT EXISTS weddings (
     id SERIAL PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     couple_names TEXT NOT NULL,
     wedding_date DATE NOT NULL,
     venue TEXT,
@@ -18,10 +18,8 @@ CREATE TABLE IF NOT EXISTS weddings (
     photographer TEXT,
     caterer TEXT,
     florist TEXT,
-    DJ_or_band TEXT,
     
     -- Planning
-    budget DECIMAL(12,2),
     guest_count INTEGER,
     dress_code TEXT,
     theme TEXT,
@@ -41,15 +39,18 @@ CREATE TABLE IF NOT EXISTS weddings (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX idx_weddings_user ON weddings(user_id);
-CREATE INDEX idx_weddings_date ON weddings(wedding_date);
+CREATE INDEX IF NOT EXISTS idx_weddings_user ON weddings(user_id);
+CREATE INDEX IF NOT EXISTS idx_weddings_date ON weddings(wedding_date);
+
+ALTER TABLE weddings DROP COLUMN IF EXISTS DJ_or_band;
+ALTER TABLE weddings DROP COLUMN IF EXISTS budget;
 
 -- ============================================
 -- 2. ANNIVERSARY TABLE
 -- ============================================
 CREATE TABLE IF NOT EXISTS anniversaries (
     id SERIAL PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     couple_names TEXT NOT NULL,
     anniversary_date DATE NOT NULL,
     years_married INTEGER,
@@ -72,15 +73,15 @@ CREATE TABLE IF NOT EXISTS anniversaries (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX idx_anniversaries_user ON anniversaries(user_id);
-CREATE INDEX idx_anniversaries_date ON anniversaries(anniversary_date);
+CREATE INDEX IF NOT EXISTS idx_anniversaries_user ON anniversaries(user_id);
+CREATE INDEX IF NOT EXISTS idx_anniversaries_date ON anniversaries(anniversary_date);
 
 -- ============================================
 -- 3. PARTY TABLE
 -- ============================================
 CREATE TABLE IF NOT EXISTS parties (
     id SERIAL PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     party_name TEXT NOT NULL,
     party_date DATE NOT NULL,
     party_time TIME,
@@ -113,15 +114,15 @@ CREATE TABLE IF NOT EXISTS parties (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX idx_parties_user ON parties(user_id);
-CREATE INDEX idx_parties_date ON parties(party_date);
+CREATE INDEX IF NOT EXISTS idx_parties_user ON parties(user_id);
+CREATE INDEX IF NOT EXISTS idx_parties_date ON parties(party_date);
 
 -- ============================================
 -- 4. HANGOUT TABLE
 -- ============================================
 CREATE TABLE IF NOT EXISTS hangouts (
     id SERIAL PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     hangout_name TEXT NOT NULL,
     hangout_date DATE NOT NULL,
     hangout_time TIME,
@@ -154,15 +155,15 @@ CREATE TABLE IF NOT EXISTS hangouts (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX idx_hangouts_user ON hangouts(user_id);
-CREATE INDEX idx_hangouts_date ON hangouts(hangout_date);
+CREATE INDEX IF NOT EXISTS idx_hangouts_user ON hangouts(user_id);
+CREATE INDEX IF NOT EXISTS idx_hangouts_date ON hangouts(hangout_date);
 
 -- ============================================
 -- 5. OTHER EVENTS TABLE (Flexible)
 -- ============================================
 CREATE TABLE IF NOT EXISTS other_events (
     id SERIAL PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     event_name TEXT NOT NULL,
     event_date DATE NOT NULL,
     event_time TIME,
@@ -184,15 +185,15 @@ CREATE TABLE IF NOT EXISTS other_events (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX idx_other_events_user ON other_events(user_id);
-CREATE INDEX idx_other_events_date ON other_events(event_date);
+CREATE INDEX IF NOT EXISTS idx_other_events_user ON other_events(user_id);
+CREATE INDEX IF NOT EXISTS idx_other_events_date ON other_events(event_date);
 
 -- ============================================
 -- 6. UNIFIED EVENT REGISTRY (for dashboard)
 -- ============================================
 CREATE TABLE IF NOT EXISTS event_registry (
     id SERIAL PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     event_type TEXT NOT NULL,  -- 'birthday', 'wedding', 'anniversary', 'party', 'hangout', 'other'
     event_id INTEGER NOT NULL,  -- FK to specific event table
     event_date DATE NOT NULL,
@@ -205,9 +206,9 @@ CREATE TABLE IF NOT EXISTS event_registry (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX idx_event_registry_user_date ON event_registry(user_id, event_date);
-CREATE INDEX idx_event_registry_type ON event_registry(event_type);
-CREATE UNIQUE INDEX idx_event_registry_unique ON event_registry(event_type, event_id);
+CREATE INDEX IF NOT EXISTS idx_event_registry_user_date ON event_registry(user_id, event_date);
+CREATE INDEX IF NOT EXISTS idx_event_registry_type ON event_registry(event_type);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_event_registry_unique ON event_registry(event_type, event_id);
 
 -- ============================================
 -- 7. ENABLE RLS
@@ -220,63 +221,95 @@ ALTER TABLE other_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE event_registry ENABLE ROW LEVEL SECURITY;
 
 -- ============================================
--- 8. POLICIES
+-- 9. RSVP TABLES
 -- ============================================
 
--- Wedding policies
-CREATE POLICY "Users can read own weddings" ON weddings
-    FOR SELECT USING (auth.uid()::text = user_id);
-CREATE POLICY "Users can create weddings" ON weddings
-    FOR INSERT WITH CHECK (auth.uid()::text = user_id);
-CREATE POLICY "Users can update own weddings" ON weddings
-    FOR UPDATE USING (auth.uid()::text = user_id);
-CREATE POLICY "Users can delete own weddings" ON weddings
-    FOR DELETE USING (auth.uid()::text = user_id);
+-- Wedding RSVPs
+CREATE TABLE IF NOT EXISTS wedding_rsvps (
+    id SERIAL PRIMARY KEY,
+    wedding_id INTEGER NOT NULL REFERENCES weddings(id) ON DELETE CASCADE,
+    guest_name TEXT NOT NULL,
+    guest_email TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'maybe',
+    message TEXT,
+    rsvp_date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
 
--- Anniversary policies
-CREATE POLICY "Users can read own anniversaries" ON anniversaries
-    FOR SELECT USING (auth.uid()::text = user_id);
-CREATE POLICY "Users can create anniversaries" ON anniversaries
-    FOR INSERT WITH CHECK (auth.uid()::text = user_id);
-CREATE POLICY "Users can update own anniversaries" ON anniversaries
-    FOR UPDATE USING (auth.uid()::text = user_id);
-CREATE POLICY "Users can delete own anniversaries" ON anniversaries
-    FOR DELETE USING (auth.uid()::text = user_id);
+CREATE INDEX IF NOT EXISTS idx_wedding_rsvps_wedding ON wedding_rsvps(wedding_id);
 
--- Party policies
-CREATE POLICY "Users can read own parties" ON parties
-    FOR SELECT USING (auth.uid()::text = user_id);
-CREATE POLICY "Users can create parties" ON parties
-    FOR INSERT WITH CHECK (auth.uid()::text = user_id);
-CREATE POLICY "Users can update own parties" ON parties
-    FOR UPDATE USING (auth.uid()::text = user_id);
-CREATE POLICY "Users can delete own parties" ON parties
-    FOR DELETE USING (auth.uid()::text = user_id);
+-- Party RSVPs
+CREATE TABLE IF NOT EXISTS party_rsvps (
+    id SERIAL PRIMARY KEY,
+    party_id INTEGER NOT NULL REFERENCES parties(id) ON DELETE CASCADE,
+    guest_name TEXT NOT NULL,
+    guest_email TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'maybe',
+    message TEXT,
+    rsvp_date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
 
--- Hangout policies
-CREATE POLICY "Users can read own hangouts" ON hangouts
-    FOR SELECT USING (auth.uid()::text = user_id);
-CREATE POLICY "Users can create hangouts" ON hangouts
-    FOR INSERT WITH CHECK (auth.uid()::text = user_id);
-CREATE POLICY "Users can update own hangouts" ON hangouts
-    FOR UPDATE USING (auth.uid()::text = user_id);
-CREATE POLICY "Users can delete own hangouts" ON hangouts
-    FOR DELETE USING (auth.uid()::text = user_id);
+CREATE INDEX IF NOT EXISTS idx_party_rsvps_party ON party_rsvps(party_id);
 
--- Other events policies
-CREATE POLICY "Users can read own other_events" ON other_events
-    FOR SELECT USING (auth.uid()::text = user_id);
-CREATE POLICY "Users can create other_events" ON other_events
-    FOR INSERT WITH CHECK (auth.uid()::text = user_id);
-CREATE POLICY "Users can update own other_events" ON other_events
-    FOR UPDATE USING (auth.uid()::text = user_id);
-CREATE POLICY "Users can delete own other_events" ON other_events
-    FOR DELETE USING (auth.uid()::text = user_id);
+-- Hangout RSVPs
+CREATE TABLE IF NOT EXISTS hangout_rsvps (
+    id SERIAL PRIMARY KEY,
+    hangout_id INTEGER NOT NULL REFERENCES hangouts(id) ON DELETE CASCADE,
+    guest_name TEXT NOT NULL,
+    guest_email TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'maybe',
+    message TEXT,
+    rsvp_date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
 
--- Event registry policies
-CREATE POLICY "Users can read own event_registry" ON event_registry
-    FOR SELECT USING (auth.uid()::text = user_id);
-CREATE POLICY "Users can create event_registry" ON event_registry
-    FOR INSERT WITH CHECK (auth.uid()::text = user_id);
-CREATE POLICY "Users can delete from event_registry" ON event_registry
-    FOR DELETE USING (auth.uid()::text = user_id);
+CREATE INDEX IF NOT EXISTS idx_hangout_rsvps_hangout ON hangout_rsvps(hangout_id);
+
+-- Other Event RSVPs
+CREATE TABLE IF NOT EXISTS other_event_rsvps (
+    id SERIAL PRIMARY KEY,
+    event_id INTEGER NOT NULL REFERENCES other_events(id) ON DELETE CASCADE,
+    guest_name TEXT NOT NULL,
+    guest_email TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'maybe',
+    message TEXT,
+    rsvp_date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_other_event_rsvps_event ON other_event_rsvps(event_id);
+
+-- ============================================
+-- RLS POLICIES FOR RSVP TABLES
+-- ============================================
+
+ALTER TABLE wedding_rsvps ENABLE ROW LEVEL SECURITY;
+ALTER TABLE party_rsvps ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hangout_rsvps ENABLE ROW LEVEL SECURITY;
+ALTER TABLE other_event_rsvps ENABLE ROW LEVEL SECURITY;
+
+-- Wedding RSVP policies
+-- Wedding RSVP policies
+DROP POLICY IF EXISTS "Anyone can create wedding RSVP" ON wedding_rsvps;
+CREATE POLICY "Anyone can create wedding RSVP" ON wedding_rsvps FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Users can read wedding RSVPs" ON wedding_rsvps;
+CREATE POLICY "Users can read wedding RSVPs" ON wedding_rsvps FOR SELECT USING (true);
+
+-- Party RSVP policies
+DROP POLICY IF EXISTS "Anyone can create party RSVP" ON party_rsvps;
+CREATE POLICY "Anyone can create party RSVP" ON party_rsvps FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Users can read party RSVPs" ON party_rsvps;
+CREATE POLICY "Users can read party RSVPs" ON party_rsvps FOR SELECT USING (true);
+
+-- Hangout RSVP policies
+DROP POLICY IF EXISTS "Anyone can create hangout RSVP" ON hangout_rsvps;
+CREATE POLICY "Anyone can create hangout RSVP" ON hangout_rsvps FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Users can read hangout RSVPs" ON hangout_rsvps;
+CREATE POLICY "Users can read hangout RSVPs" ON hangout_rsvps FOR SELECT USING (true);
+
+-- Other Event RSVP policies
+DROP POLICY IF EXISTS "Anyone can create other event RSVP" ON other_event_rsvps;
+CREATE POLICY "Anyone can create other event RSVP" ON other_event_rsvps FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Users can read other event RSVPs" ON other_event_rsvps;
+CREATE POLICY "Users can read other event RSVPs" ON other_event_rsvps FOR SELECT USING (true);

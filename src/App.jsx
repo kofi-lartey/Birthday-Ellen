@@ -18,6 +18,21 @@ import Dashboard from './pages/Dashboard'
 import Welcome from './pages/Welcome'
 import SelectPackage from './pages/SelectPackage'
 import PaymentDetails from './pages/PaymentDetails'
+import WeddingView from './pages/WeddingView'
+import AnniversaryView from './pages/AnniversaryView'
+import PartyView from './pages/PartyView'
+import HangoutView from './pages/HangoutView'
+import OtherEventView from './pages/OtherEventView'
+import EditWedding from './pages/EditWedding'
+import EditAnniversary from './pages/EditAnniversary'
+import EditParty from './pages/EditParty'
+import EditHangout from './pages/EditHangout'
+import EditOtherEvent from './pages/EditOtherEvent'
+import CreateWedding from './pages/CreateWedding'
+import CreateAnniversary from './pages/CreateAnniversary'
+import CreateParty from './pages/CreateParty'
+import CreateHangout from './pages/CreateHangout'
+import CreateOtherEvent from './pages/CreateOtherEvent'
 
 function ResetPassword() {
     const [password, setPassword] = useState('')
@@ -217,21 +232,47 @@ function AuthCallback() {
                  <Route path="/login" element={<Login />} />
                  <Route path="/auth/callback" element={<AuthCallback />} />
                  <Route path="/reset-password" element={<ResetPassword />} />
-                 <Route path="/select-package" element={<SelectPackage />} />
-                 <Route path="/payment-details" element={<PaymentDetails />} />
-                 <Route path="/dashboard" element={<Dashboard />} />
-                 <Route path="/birthday/:code" element={<Birthday />} />
-                 <Route path="/upload/:code" element={<Upload />} />
-                 <Route path="/slideshow/:code" element={<Slideshow />} />
-                 <Route path="/home" element={<Home />} />
- <Route path="/gift" element={<GiftPage />} />
-                   <Route path="/gift/:code" element={<GiftPage />} />
-                  <Route path="/claim/:giftCode" element={<ClaimGift />} />
-                 <Route path="/admin" element={<Admin />} />
-                 <Route path="/upload" element={<Upload />} />
-                 <Route path="/slideshow" element={<Slideshow />} />
-                 <Route path="/locked" element={<Locked />} />
-             </Routes>
+                  <Route path="/select-package" element={<SelectPackage />} />
+                  <Route path="/payment-details" element={<PaymentDetails />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
+                   <Route path="/birthday/:code" element={<Birthday />} />
+                   <Route path="/upload/:code" element={<Upload />} />
+                   <Route path="/slideshow/:code" element={<Slideshow />} />
+                   <Route path="/wedding/:id/slideshow/:code" element={<Slideshow />} />
+                   <Route path="/public/wedding/:id/slideshow/:code" element={<Slideshow />} />
+                  <Route path="/home" element={<Home />} />
+                  <Route path="/gift" element={<GiftPage />} />
+                    <Route path="/gift/:code" element={<GiftPage />} />
+                    <Route path="/claim/:giftCode" element={<ClaimGift />} />
+                  <Route path="/admin" element={<Admin />} />
+                  <Route path="/upload" element={<Upload />} />
+                  <Route path="/slideshow" element={<Slideshow />} />
+                  <Route path="/locked" element={<Locked />} />
+                  {/* Event Detail Views */}
+                  <Route path="/wedding/:id" element={<WeddingView />} />
+                  <Route path="/anniversary/:id" element={<AnniversaryView />} />
+                  <Route path="/party/:id" element={<PartyView />} />
+                  <Route path="/hangout/:id" element={<HangoutView />} />
+                  <Route path="/other-event/:id" element={<OtherEventView />} />
+                  {/* Public Views */}
+                  <Route path="/public/wedding/:id" element={<WeddingView />} />
+                  <Route path="/public/anniversary/:id" element={<AnniversaryView />} />
+                  <Route path="/public/party/:id" element={<PartyView />} />
+                  <Route path="/public/hangout/:id" element={<HangoutView />} />
+                  <Route path="/public/other-event/:id" element={<OtherEventView />} />
+                   {/* Edit Routes */}
+                   <Route path="/edit-wedding/:id" element={<EditWedding />} />
+                   <Route path="/edit-anniversary/:id" element={<EditAnniversary />} />
+                   <Route path="/edit-party/:id" element={<EditParty />} />
+                   <Route path="/edit-hangout/:id" element={<EditHangout />} />
+                   <Route path="/edit-other-event/:id" element={<EditOtherEvent />} />
+                   {/* Create Routes */}
+                   <Route path="/create-wedding" element={<CreateWedding />} />
+                   <Route path="/create-anniversary" element={<CreateAnniversary />} />
+                   <Route path="/create-party" element={<CreateParty />} />
+                   <Route path="/create-hangout" element={<CreateHangout />} />
+                   <Route path="/create-other-event" element={<CreateOtherEvent />} />
+              </Routes>
          </Router>
      )
  }

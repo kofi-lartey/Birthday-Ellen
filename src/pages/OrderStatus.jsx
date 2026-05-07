@@ -14,7 +14,7 @@ function OrderStatus() {
         if (orderCode) {
             checkOrderStatus(orderCode)
         }
-    }, [])
+    }, [orderCode])
 
     async function checkOrderStatus(code) {
         if (!code.trim()) {
@@ -30,8 +30,23 @@ function OrderStatus() {
         const localOrder = localOrders.find(o => o.code.toLowerCase() === code.toLowerCase())
 
         if (localOrder) {
-            setOrder(localOrder)
-            setLoading(false)
+            // Normalize to snake_case (Supabase standard) for consistent access
+            // Handle both camelCase (legacy) and snake_case (new standard) from localStorage
+            const normalizedOrder = {
+                ...localOrder,
+                code: localOrder.code,
+                recipient_name: localOrder.recipient_name || localOrder.recipientName,
+                birthday_date: localOrder.birthday_date || localOrder.birthdayDate,
+                giver_name: localOrder.giver_name || localOrder.giverName,
+                giver_phone: localOrder.giver_phone || localOrder.giverPhone,
+                package: localOrder.package,
+                page_type: localOrder.page_type || localOrder.pageType,
+                status: localOrder.status,
+                price: localOrder.price,
+                created_at: localOrder.created_at || localOrder.createdAt
+            };
+            setOrder(normalizedOrder);
+            setLoading(false);
             return
         }
 
