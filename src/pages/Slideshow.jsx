@@ -208,7 +208,7 @@ function Slideshow() {
         setIsLoading(false)
     }
 
-    const recipientName = orderConfig?.recipient_name || orderConfig?.nickname || 'Birthday Star'
+    const celebrantName = orderConfig?.recipient_name || orderConfig?.nickname || 'Birthday Star'
 
     function nextSlide() {
         setCurrentIndex(prev => (prev + 1) % slides.length)
@@ -806,7 +806,7 @@ function Slideshow() {
             ctx.font = 'bold 85px "Dancing Script", "Playfair Display", cursive'
             ctx.fillStyle = '#fff3e6'
             ctx.shadowBlur = 15
-            ctx.fillText(`${recipientName} 🎂`, 0, 140 + bounce)
+            ctx.fillText(`${celebrantName} 🎂`, 0, 140 + bounce)
             ctx.restore()
 
             // --- Animated sparkles (rotating and scaling) ---
@@ -1193,12 +1193,11 @@ function Slideshow() {
 
     function shareToWhatsApp() {
         const currentSlide = slides[currentIndex];
-        if (currentSlide) {
+        if (currentSlide && code) {
             const baseUrl = window.location.origin;
-            const path = window.location.pathname.split('/slideshow/')[0];
-            const shareLink = `${baseUrl}${path}/slideshow/${currentSlide.id}`;
+            const shareLink = `${baseUrl}/slideshow/${code}`;
 
-            const messageText = `"${currentSlide.message}"\n\nView the full slideshow here: ${shareLink}\n\n- ${currentSlide.name}\n\n🎂 Happy Birthday! 💕`;
+            const messageText = `✨ ${celebrantName} invites you to relive our beautiful moments together! ✨\n\n🎥 Watch the slideshow: ${shareLink}\n\n💝 Enjoy the memories!`;
             const encodedMessage = encodeURIComponent(messageText);
 
             window.open(`https://wa.me/?text=${encodedMessage}`, '_blank');
@@ -1311,7 +1310,7 @@ function Slideshow() {
 
             {/* Title Overlay */}
             <div className={`title-overlay ${showTitle ? 'show' : ''}`}>
-                <h1 className="romantic-font">Happy Birthday, {recipientName}! 🎂</h1>
+                <h1 className="romantic-font">Happy Birthday, {celebrantName}! 🎂</h1>
                 <p>With love from your friends & family 💕</p>
             </div>
 
@@ -1445,7 +1444,7 @@ function Slideshow() {
                     <div className="text-center px-4">
                         <div className="text-6xl mb-4">🎉</div>
                         <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-rose-400 to-pink-600 mb-2 romantic-font">
-                            Happy {orderConfig?.event_type === 'anniversary' ? 'Anniversary' : orderConfig?.event_type === 'wedding' ? 'Wedding Celebration' : orderConfig?.event_type === 'party' ? 'Party' : 'Birthday'}, {recipientName}! 🎂
+                            Happy {orderConfig?.event_type === 'anniversary' ? 'Anniversary' : orderConfig?.event_type === 'wedding' ? 'Wedding Celebration' : orderConfig?.event_type === 'party' ? 'Party' : 'Birthday'}, {celebrantName}! 🎂
                         </h2>
                         <p className="text-gray-300 mt-2 max-w-md mx-auto">
                             The celebration is about to begin! Share your favorite memories to make this moment even more special.
