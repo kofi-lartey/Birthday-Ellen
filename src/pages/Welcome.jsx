@@ -22,7 +22,13 @@ function Welcome() {
                 <div className="bg-white rounded-3xl shadow-2xl p-8 text-center">
                     {/* Logo/Title */}
                     <div className="mb-8">
-                        <div className="text-6xl mb-4 animate-float">🎂</div>
+                        <div className="text-6xl mb-4 animate-float">
+                            <img
+                                src="https://res.cloudinary.com/djjgkezui/image/upload/v1778959179/IMG-20260516-WA0050_zegaok.jpg"
+                                alt="Happy Momento Logo"
+                                className="w-28 h-28 object-cover rounded-2xl mx-auto shadow-lg border-4 border-white"
+                            />
+                        </div>
                         <h1 className="text-4xl font-['Dancing_Script'] text-rose-500 mb-2">
                             Happy Moments, Made Easy
                         </h1>

@@ -507,7 +507,13 @@ function Order() {
                 {step === 1 && (
                     <div className="max-w-lg mx-auto bg-white rounded-3xl shadow-xl p-6 md:p-8">
                         <div className="text-center mb-6">
-                            <div className="text-5xl mb-3">🎂</div>
+                            <div className="text-5xl mb-3 w-24 h-24 mx-auto">
+                                <img
+                                    src="https://res.cloudinary.com/djjgkezui/image/upload/v1778959179/IMG-20260516-WA0050_zegaok.jpg"
+                                    alt="Happy Momento Logo"
+                                    className="w-full h-full object-cover rounded-2xl shadow-lg border-4 border-white"
+                                />
+                            </div>
                             <h2 className="text-2xl font-bold text-gray-700">Who is the birthday star?</h2>
                             <p className="text-gray-500">Let's create something special for them</p>
                         </div>
