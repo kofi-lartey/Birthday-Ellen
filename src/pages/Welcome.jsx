@@ -26,7 +26,7 @@ function Welcome() {
                         <h1 className="text-4xl font-['Dancing_Script'] text-rose-500 mb-2">
                             Happy Moments, Made Easy
                         </h1>
-                        <p className="text-gray-500">Create beautiful birthday pages for your loved ones</p>
+                        <p className="text-gray-500">Create beautiful pages for your loved ones</p>
                     </div>
 
                     {/* Auth Options */}
