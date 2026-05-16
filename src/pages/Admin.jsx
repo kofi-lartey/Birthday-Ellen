@@ -136,24 +136,19 @@ function Admin() {
     }
 
     async function loadMomoNumber() {
+        // localStorage only — Supabase config table may not exist (406)
         const momo = localStorage.getItem(STORAGE_KEYS.MOM0)
         if (momo) {
             setMomoNumber(momo)
-        } else {
-            try {
-                const { data } = await supabase
-                    .from('config')
-                    .select('value')
-                    .eq('key', 'momo_number')
-                    .single()
-                if (data?.value) setMomoNumber(data.value)
-            } catch (err) { }
         }
     }
 
     function saveMomoNumber() {
         localStorage.setItem(STORAGE_KEYS.MOM0, momoNumber)
-        supabase.from('config').upsert({ key: 'momo_number', value: momoNumber }).catch(() => { })
+        // Supabase config table may not exist — localStorage is source of truth
+        if (supabase) {
+            supabase.from('config').upsert({ key: 'momo_number', value: momoNumber }).catch(() => { })
+        }
         setMomoStatus(true)
         setTimeout(() => setMomoStatus(false), 3000)
     }

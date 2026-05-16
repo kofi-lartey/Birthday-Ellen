@@ -24,7 +24,7 @@ function Welcome() {
                     <div className="mb-8">
                         <div className="text-6xl mb-4 animate-float">🎂</div>
                         <h1 className="text-4xl font-['Dancing_Script'] text-rose-500 mb-2">
-                            Birthday Surprise
+                            Happy Moments, Made Easy
                         </h1>
                         <p className="text-gray-500">Create beautiful birthday pages for your loved ones</p>
                     </div>
@@ -49,19 +49,19 @@ function Welcome() {
                     </div>
 
                     {/* Divider */}
-                    <div className="flex items-center my-8">
+                    {/* <div className="flex items-center my-8">
                         <div className="flex-1 h-px bg-gray-200"></div>
                         <span className="px-4 text-gray-400 text-sm">or</span>
                         <div className="flex-1 h-px bg-gray-200"></div>
-                    </div>
+                    </div> */}
 
                     {/* Browse Without Account */}
-                    <Link
+                    {/* <Link
                         to="/order"
                         className="block w-full bg-gray-100 text-gray-600 py-3 rounded-xl font-semibold hover:bg-gray-200 transition"
                     >
                         Continue Without Account →
-                    </Link>
+                    </Link> */}
 
                     {/* Features */}
                     <div className="mt-8 pt-8 border-t border-gray-100">
@@ -85,9 +85,9 @@ function Welcome() {
 
                 {/* Footer */}
                 <div className="text-center mt-6">
-                    <Link to="/order-status" className="text-rose-500 text-sm hover:text-rose-600 mr-4">
+                    {/* <Link to="/order-status" className="text-rose-500 text-sm hover:text-rose-600 mr-4">
                         Check Order Status
-                    </Link>
+                    </Link> */}
                     <p className="text-gray-500 text-sm">
                         By continuing, you agree to create wonderful moments
                     </p>
