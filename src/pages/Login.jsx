@@ -102,12 +102,12 @@ function Login() {
     return (
         <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)' }}>
             {/* Back Link */}
-            <button
-                onClick={() => navigate(-1)}
+            <Link
+                to="/"
                 className="fixed top-4 left-4 bg-white/80 text-rose-500 px-4 py-2 rounded-full text-sm hover:bg-rose-100 transition shadow-lg"
             >
                 ← Back
-            </button>
+            </Link>
 
             <div className="max-w-md w-full">
                 <div className="bg-white rounded-3xl shadow-2xl p-8">
