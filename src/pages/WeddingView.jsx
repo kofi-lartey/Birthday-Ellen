@@ -1,58 +1,69 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { safeFormatDate } from '../utils/dateUtils';
 
 export default function WeddingView() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const location = useLocation();
   const isPublicView = location.pathname.startsWith('/public');
   
   const [wedding, setWedding] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [isOwner, setIsOwner] = useState(false);
-  const [showRSVP, setShowRSVP] = useState(false);
-  const [rsvpList, setRsvpList] = useState([]);
-  const [shareLink, setShareLink] = useState('');
-  const [copied, setCopied] = useState(false);
+  const [revealed, setRevealed] = useState(false);
+  const [isWeddingDay, setIsWeddingDay] = useState(false);
+  const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+  const [eventCode, setEventCode] = useState(null);
+  const audioRef = useRef(null);
+
+  // Default assets
+  const DEFAULT_BACKGROUND = 'https://images.unsplash.com/photo-1519741497674-611481863552?w=1280&q=80';
+  const DEFAULT_AUDIO = 'https://res.cloudinary.com/djjgkezui/video/upload/v1770905491/Chris_Brown_-_With_You_Official_HD_Video_iqxx8x.mp3';
 
   useEffect(() => {
     loadWedding();
   }, [id]);
 
+  useEffect(() => {
+    if (wedding) {
+      calculateCountdown();
+      const interval = setInterval(calculateCountdown, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [wedding]);
+
   const loadWedding = async () => {
     try {
       setLoading(true);
-      
-      // Check auth status
       const { data: { user } } = await supabase.auth.getUser();
       
-      // Load wedding
-      let query = supabase.from('weddings').select('*').eq('id', id);
+      let actualId = null;
+      const isCode = isNaN(id) || /[A-Za-z]/.test(id);
       
-      // If not public view, enforce RLS (user must be owner)
-      // If public view, allow public weddings
-      if (isPublicView) {
-        query = query.eq('is_public', true);
+      if (isCode) {
+        const { data: registryData, error: registryError } = await supabase
+          .from('event_registry')
+          .select('event_id, code')
+          .eq('code', id)
+          .eq('event_type', 'wedding')
+          .single();
+        
+        if (registryError) throw new Error('Wedding not found');
+        actualId = registryData.event_id;
+        setEventCode(registryData.code);
+      } else {
+        actualId = parseInt(id);
       }
       
-      const { data, error } = await query.single();
+      let query = supabase.from('weddings').select('*').eq('id', actualId);
+      if (isPublicView) query = query.eq('is_public', true);
       
+      const { data, error } = await query.single();
       if (error) throw error;
       if (!data) throw new Error('Wedding not found');
       
       setWedding(data);
-      setIsOwner(user?.id === data.user_id);
-      
-      // Load RSVPs
-      loadRSVPs(data.id);
-      
-      // Generate share link
-      const publicLink = `${window.location.origin}/public/wedding/${data.id}`;
-      setShareLink(publicLink);
-      
     } catch (err) {
       console.error('Error loading wedding:', err);
       setError(err.message);
@@ -61,139 +72,55 @@ export default function WeddingView() {
     }
   };
 
-  const loadRSVPs = async (weddingId) => {
-    try {
-      const { data, error } = await supabase
-        .from('wedding_rsvps')
-        .select('*')
-        .eq('wedding_id', weddingId)
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      setRsvpList(data || []);
-    } catch (err) {
-      console.error('Error loading RSVPs:', err);
+  const calculateCountdown = () => {
+    if (!wedding?.wedding_date) {
+      setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+      return;
     }
+    
+    const now = new Date();
+    const targetDate = new Date(wedding.wedding_date);
+    const isToday = now.toDateString() === targetDate.toDateString();
+    
+    if (isToday) {
+      setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+      setIsWeddingDay(true);
+      return;
+    }
+    
+    if (now > targetDate) {
+      setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+      setIsWeddingDay(true);
+      return;
+    }
+    
+    const diff = targetDate - now;
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    
+    setCountdown({ days, hours, minutes, seconds });
+    setIsWeddingDay(false);
   };
 
-  const handleRSVP = async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const guestName = formData.get('guestName');
-    const guestEmail = formData.get('guestEmail');
-    const status = formData.get('status');
-    const message = formData.get('message');
-
-    try {
-      const { data: wedding } = await supabase
-        .from('weddings')
-        .select('guest_list_json')
-        .eq('id', id)
-        .single();
-
-      const guestList = wedding?.guest_list_json?.guests || [];
-      
-      const newGuest = {
-        name: guestName,
-        email: guestEmail,
-        status,
-        message: message || '',
-        rsvp_date: new Date().toISOString().split('T')[0]
-      };
-      
-      // Check if guest already exists
-      const existingIndex = guestList.findIndex(g => g.email === guestEmail);
-      if (existingIndex >= 0) {
-        guestList[existingIndex] = newGuest;
-      } else {
-        guestList.push(newGuest);
+  const handleTapToReveal = () => {
+    if (isWeddingDay) {
+      setRevealed(true);
+      if (audioRef.current) {
+        audioRef.current.play().catch(console.error);
       }
-
-      await supabase
-        .from('weddings')
-        .update({ 
-          guest_list_json: { guests: guestList }
-        })
-        .eq('id', id);
-
-      // Also track in separate RSVP table
-      await supabase
-        .from('wedding_rsvps')
-        .upsert({
-          wedding_id: parseInt(id),
-          guest_name: guestName,
-          guest_email: guestEmail,
-          status,
-          message: message || '',
-          rsvp_date: new Date()
-        });
-
-      await loadRSVPs(id);
-      await loadWedding();
-      
-      e.target.reset();
-      setShowRSVP(false);
-      alert('RSVP submitted successfully!');
-    } catch (err) {
-      console.error('Error submitting RSVP:', err);
-      alert('Error submitting RSVP');
+    } else {
+      alert('The celebration awaits! Your surprise will be revealed on the wedding day! 💒');
     }
   };
 
-  const handleDeleteRSVP = async (rsvpId) => {
-    if (!confirm('Remove this RSVP?')) return;
-    try {
-      await supabase.from('wedding_rsvps').delete().eq('id', rsvpId);
-      await loadRSVPs(id);
-    } catch (err) {
-      console.error('Error deleting RSVP:', err);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this wedding?')) return;
-    try {
-      await supabase.from('weddings').delete().eq('id', id);
-      await supabase.from('event_registry').delete().eq('event_id', id).eq('event_type', 'wedding');
-      navigate('/events');
-    } catch (err) {
-      console.error('Error deleting wedding:', err);
-    }
-  };
-
-  const handleEdit = () => {
-    navigate(`/edit-wedding/${id}`);
-  };
-
-  const copyShareLink = () => {
-    navigator.clipboard.writeText(shareLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const togglePublic = async () => {
-    try {
-      await supabase
-        .from('weddings')
-        .update({ is_public: !wedding.is_public })
-        .eq('id', id);
-      
-      await supabase
-        .from('event_registry')
-        .update({ is_public: !wedding.is_public })
-        .eq('event_id', id)
-        .eq('event_type', 'wedding');
-      
-      await loadWedding();
-    } catch (err) {
-      console.error('Error toggling public:', err);
-    }
-  };
+  const formatNumber = (num) => String(num).padStart(2, '0');
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-50 to-rose-100">
-        <div className="text-rose-500 text-2xl animate-pulse">Loading wedding details...</div>
+        <div className="text-rose-500 text-2xl animate-pulse">Loading wedding celebration...</div>
       </div>
     );
   }
@@ -202,159 +129,233 @@ export default function WeddingView() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-50 to-rose-100">
         <div className="text-center">
-          <div className="text-rose-500 text-2xl mb-4">💍</div>
-          <p className="text-gray-600">Wedding not found</p>
-          <button onClick={() => navigate('/events')} className="mt-4 px-4 py-2 bg-rose-500 text-white rounded-lg">
-            Back to Events
+          <div className="text-rose-500 text-6xl mb-4">💍</div>
+          <p className="text-gray-600 text-xl">Wedding not found</p>
+          <button onClick={() => window.location.href = '/'} className="mt-4 px-6 py-2 bg-rose-500 text-white rounded-full">
+            Go Home
           </button>
         </div>
       </div>
     );
   }
 
-  const guestList = wedding.guest_list_json?.guests || [];
-  const timeline = wedding.timeline_json?.events || [];
-  const vendorKeys = ['photographer', 'caterer', 'florist'];
+  const coupleNames = wedding.couple_names || 'The Happy Couple';
+  const [name1, name2] = coupleNames.includes('&') ? coupleNames.split('&').map(n => n.trim()) : [coupleNames, ''];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 to-rose-100 pb-12">
-      {/* Header */}
-      <div className="bg-white shadow-lg sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <button onClick={() => navigate('/events')} className="flex items-center gap-2 text-gray-600 hover:text-rose-500">
-            ← Back to Events
-          </button>
-          {!isPublicView && isOwner && (
-            <div className="flex items-center gap-3">
-              <button onClick={togglePublic} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${wedding.is_public ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                {wedding.is_public ? '🌍 Public' : '🔒 Private'}
-              </button>
-              <button onClick={handleEdit} className="px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600">
-                Edit
-              </button>
-              <button onClick={handleDelete} className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
-                Delete
-              </button>
-            </div>
-          )}
-        </div>
+    <div className="min-h-screen text-gray-800" style={{
+      backgroundImage: `url(${wedding.background_image || DEFAULT_BACKGROUND})`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundAttachment: 'fixed'
+    }}>
+      {/* Floating Hearts/Rings Background */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden" style={{ background: 'rgba(0,0,0,0.4)' }}>
+        {[...Array(20)].map((_, i) => (
+          <div
+            key={i}
+            className="absolute"
+            style={{
+              left: `${Math.random() * 100}%`,
+              animation: `floatUp ${8 + Math.random() * 6}s ease-in-out infinite`,
+              animationDelay: `${Math.random() * 5}s`,
+              fontSize: `${20 + Math.random() * 30}px`,
+              opacity: 0
+            }}
+          >
+            {['💍', '💒', '💕', '🌸', '✨', '💖', '🥂'][Math.floor(Math.random() * 7)]}
+          </div>
+        ))}
       </div>
 
-      <div className="max-w-6xl mx-auto px-6">
-        {/* Hero Section */}
-        <div className="bg-white rounded-2xl shadow-lg p-8 mt-8 mb-8">
-          <div className="flex items-start justify-between mb-6">
-            <div>
-              <h1 className="text-4xl font-bold text-gray-800 mb-2">💍 {wedding.couple_names}</h1>
-              <p className="text-rose-500 text-xl font-medium">
-                {safeFormatDate(wedding.wedding_date)}
-              </p>
-            </div>
-            <div className="text-right">
-              <span className={`inline-block px-4 py-2 rounded-full text-sm font-medium ${wedding.status === 'planning' ? 'bg-yellow-100 text-yellow-700' : wedding.status === 'locked' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                {wedding.status?.toUpperCase()}
-              </span>
-              {wedding.is_public && (
-                <div className="mt-2">
-                  <button onClick={() => setShowRSVP(!showRSVP)} className="text-rose-500 hover:text-rose-600 text-sm font-medium">
-                    RSVP to this wedding
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
+      <style>{`
+        @keyframes floatUp {
+          0% { transform: translateY(100vh) scale(0); opacity: 0; }
+          10% { opacity: 0.8; }
+          90% { opacity: 0.6; }
+          100% { transform: translateY(-100px) scale(1); opacity: 0; }
+        }
+        @keyframes pulse-ring {
+          0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(244, 114, 182, 0.7); }
+          70% { transform: scale(1); box-shadow: 0 0 0 20px rgba(244, 114, 182, 0); }
+          100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(244, 114, 182, 0); }
+        }
+      `}</style>
 
-          {wedding.is_public && isOwner && (
-            <div className="mb-6 p-4 bg-gradient-to-r from-rose-50 to-pink-50 rounded-xl">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Shareable Public Link</p>
-                  <p className="text-xs text-gray-500">Anyone with this link can view and RSVP</p>
-                </div>
-                <button onClick={copyShareLink} className="px-4 py-2 bg-rose-500 text-white rounded-lg text-sm hover:bg-rose-600 transition flex items-center gap-2">
-                  {copied ? '✓ Copied!' : 'Copy Link'}
-                </button>
-              </div>
-              <input type="text" value={shareLink} readOnly className="w-full mt-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm" />
-            </div>
+      {/* Hero Section */}
+      <section className="min-h-screen flex items-center justify-center text-center px-6 relative z-10">
+        <div className="animate-fade-in">
+          <div className="text-7xl mb-6 animate-bounce">💍</div>
+          <h1 className="text-5xl md:text-7xl font-['Dancing_Script'] text-white mb-4 drop-shadow-lg">
+            {name1} & {name2 || ''}
+          </h1>
+          <p className="text-white/90 text-xl italic">Getting Married!</p>
+          <p className="text-white/80 text-lg mt-4">{safeFormatDate(wedding.wedding_date)}</p>
+          {wedding.venue && <p className="text-white/70 text-md mt-2">📍 {wedding.venue}</p>}
+        </div>
+      </section>
+
+      {/* Love Story Section */}
+      <section className="py-20 text-center px-6 relative z-10" style={{ background: 'rgba(255,255,255,0.9)' }}>
+        <div className="max-w-3xl mx-auto">
+          <div className="text-6xl mb-6">💕</div>
+          <h2 className="text-4xl font-['Dancing_Script'] text-rose-500 mb-6">Our Love Story</h2>
+          <p className="text-lg text-gray-600 leading-relaxed">
+            {wedding.special_memory || 
+              `Two hearts, one love. ${name1} and ${name2 || ''} are embarking on the most beautiful journey together. 
+              Their love story is one for the ages, filled with laughter, joy, and endless devotion. 
+              Today, they celebrate the beginning of forever.`}
+          </p>
+          {wedding.theme && (
+            <p className="text-md text-rose-400 mt-4">✨ Theme: {wedding.theme} ✨</p>
           )}
         </div>
+      </section>
 
-        {/* RSVP Section */}
-        {(isOwner || wedding.is_public) && (
-          <div className="bg-white rounded-2xl shadow-lg p-8 mb-8">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-gray-800">RSVP Responses</h2>
-              {wedding.is_public && (
-                <button onClick={() => setShowRSVP(!showRSVP)} className="px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600">
-                  {showRSVP ? 'Cancel' : 'Submit RSVP'}
-                </button>
+      {/* Countdown Section */}
+      <section className="py-20 text-center px-6 relative z-10" style={{ background: 'rgba(255,255,255,0.85)' }}>
+        <h2 className="text-3xl font-['Dancing_Script'] text-rose-500 mb-8">
+          {isWeddingDay ? "Today's The Big Day! 🎉" : "Countdown To The Big Day 💒"}
+        </h2>
+        <div className="flex justify-center gap-4 md:gap-8 flex-wrap">
+          <div className="bg-white w-24 h-24 md:w-28 md:h-28 rounded-2xl flex flex-col items-center justify-center shadow-lg border-2 border-rose-200">
+            <span className="text-3xl md:text-4xl font-bold text-rose-500">{formatNumber(countdown.days)}</span>
+            <span className="text-xs text-gray-500">Days</span>
+          </div>
+          <div className="bg-white w-24 h-24 md:w-28 md:h-28 rounded-2xl flex flex-col items-center justify-center shadow-lg border-2 border-pink-200">
+            <span className="text-3xl md:text-4xl font-bold text-pink-500">{formatNumber(countdown.hours)}</span>
+            <span className="text-xs text-gray-500">Hours</span>
+          </div>
+          <div className="bg-white w-24 h-24 md:w-28 md:h-28 rounded-2xl flex flex-col items-center justify-center shadow-lg border-2 border-purple-200">
+            <span className="text-3xl md:text-4xl font-bold text-purple-500">{formatNumber(countdown.minutes)}</span>
+            <span className="text-xs text-gray-500">Minutes</span>
+          </div>
+          <div className="bg-white w-24 h-24 md:w-28 md:h-28 rounded-2xl flex flex-col items-center justify-center shadow-lg border-2 border-rose-200">
+            <span className="text-3xl md:text-4xl font-bold text-rose-400">{formatNumber(countdown.seconds)}</span>
+            <span className="text-xs text-gray-500">Seconds</span>
+          </div>
+        </div>
+      </section>
+
+      {/* Tap to Reveal Button */}
+      {!revealed && (
+        <section className="py-20 text-center relative z-10">
+          <button
+            onClick={handleTapToReveal}
+            className="bg-gradient-to-r from-rose-500 to-pink-500 text-white px-10 py-4 rounded-full shadow-lg text-lg font-semibold hover:scale-105 transition-transform animate-pulse"
+            style={{ animation: 'pulse-ring 2s infinite' }}
+          >
+            💒 Tap To Open Wedding Surprise
+          </button>
+        </section>
+      )}
+
+      {/* Revealed Content */}
+      {revealed && (
+        <div className="relative z-10">
+          {/* Celebration Message */}
+          <section className="py-20 text-center" style={{ background: 'rgba(255,255,255,0.95)' }}>
+            <div className="text-7xl mb-4">🎉💍🎉</div>
+            <h2 className="text-5xl font-['Dancing_Script'] gradient-text">
+              Congratulations {name1} & {name2 || ''}!
+            </h2>
+            <p className="text-gray-600 text-lg mt-4 max-w-2xl mx-auto px-4">
+              May your journey together be filled with endless love, joy, and beautiful moments. Here's to forever!
+            </p>
+          </section>
+
+          {/* Wedding Details */}
+          <section className="py-10 px-6" style={{ background: 'rgba(255,255,255,0.9)' }}>
+            <h2 className="text-center text-3xl font-['Dancing_Script'] text-rose-500 mb-8">Wedding Details ✨</h2>
+            <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-6">
+              {wedding.venue && (
+                <div className="bg-white p-6 rounded-2xl shadow-lg text-center">
+                  <div className="text-4xl mb-3">📍</div>
+                  <h3 className="font-bold text-gray-700 mb-2">Venue</h3>
+                  <p className="text-gray-600">{wedding.venue}</p>
+                  {wedding.venue_address && <p className="text-gray-500 text-sm mt-1">{wedding.venue_address}</p>}
+                </div>
+              )}
+              {wedding.dress_code && (
+                <div className="bg-white p-6 rounded-2xl shadow-lg text-center">
+                  <div className="text-4xl mb-3">👔</div>
+                  <h3 className="font-bold text-gray-700 mb-2">Dress Code</h3>
+                  <p className="text-gray-600">{wedding.dress_code}</p>
+                </div>
+              )}
+              {wedding.theme && (
+                <div className="bg-white p-6 rounded-2xl shadow-lg text-center">
+                  <div className="text-4xl mb-3">🎨</div>
+                  <h3 className="font-bold text-gray-700 mb-2">Theme</h3>
+                  <p className="text-gray-600">{wedding.theme}</p>
+                </div>
+              )}
+              {wedding.guest_count && (
+                <div className="bg-white p-6 rounded-2xl shadow-lg text-center">
+                  <div className="text-4xl mb-3">👥</div>
+                  <h3 className="font-bold text-gray-700 mb-2">Guests</h3>
+                  <p className="text-gray-600">{wedding.guest_count} expected</p>
+                </div>
               )}
             </div>
+          </section>
 
-            {showRSVP && (
-              <form onSubmit={handleRSVP} className="mb-6 p-6 bg-rose-50 rounded-xl">
-                <h3 className="text-lg font-bold text-gray-800 mb-4">RSVP to Wedding</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <input type="text" name="guestName" placeholder="Your Name" required className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent" />
-                  <input type="email" name="guestEmail" placeholder="Your Email" required className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent" />
-                </div>
-                <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">RSVP Status</label>
-                  <select name="status" required className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent">
-                    <option value="attending">Attending</option>
-                    <option value="declined">Declined</option>
-                    <option value="maybe">Maybe</option>
-                  </select>
-                </div>
-                <textarea name="message" placeholder="Message to the couple (optional)" rows="3" className="w-full mt-4 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent"></textarea>
-                <div className="flex gap-4 mt-4">
-                  <button type="submit" className="px-6 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600">Submit RSVP</button>
-                  <button type="button" onClick={() => setShowRSVP(false)} className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400">Cancel</button>
-                </div>
-              </form>
-            )}
-
-              {guestList.length > 0 && (
-                <div className="mb-6">
-                  <h3 className="text-lg font-bold text-gray-800 mb-4">Guest List</h3>
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {guestList.map((guest, i) => (
-                      <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div>
-                          <span className="font-medium text-gray-800">{guest.name}</span>
-                          <span className="text-sm text-gray-500 ml-2">{guest.email}</span>
-                          {guest.message && <p className="text-sm text-gray-600 italic">"{guest.message}"</p>}
-                        </div>
-                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${guest.status === 'attending' ? 'bg-green-100 text-green-700' : guest.status === 'declined' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                          {guest.status}
-                        </span>
-                      </div>
-                    ))}
+          {/* Vendors Section */}
+          {(wedding.photographer || wedding.caterer || wedding.florist) && (
+            <section className="py-10 px-6" style={{ background: 'rgba(255,255,255,0.85)' }}>
+              <h2 className="text-center text-3xl font-['Dancing_Script'] text-rose-500 mb-8">Our Vendors 🤝</h2>
+              <div className="max-w-4xl mx-auto grid md:grid-cols-3 gap-4">
+                {wedding.photographer && (
+                  <div className="bg-white p-4 rounded-xl shadow text-center">
+                    <div className="text-3xl mb-2">📸</div>
+                    <p className="font-medium text-gray-700">Photographer</p>
+                    <p className="text-gray-600 text-sm">{wedding.photographer}</p>
                   </div>
-                </div>
-              )}
-
-              {/* Slideshow Link */}
-              <section className="py-10 text-center" style={{background: 'rgba(255,255,255,0.85)'}}>
-                <div className="flex flex-col md:flex-row gap-4 justify-center">
-                  <Link
-                    to={`/slideshow/${id}`}
-                    className="bg-gradient-to-r from-rose-500 to-pink-500 text-white font-bold py-3 px-6 rounded-full shadow-lg hover:scale-105 transition-transform inline-block"
-                  >
-                    View Slideshow 🎬
-                  </Link>
-                  <Link
-                    to={`/wedding/${id}/slideshow/${id}`}
-                    className="bg-gradient-to-r from-rose-500 to-pink-500 text-white font-bold py-3 px-6 rounded-full shadow-lg hover:scale-105 transition-transform inline-block"
-                  >
-                    Wedding Slideshow 🌹
-                  </Link>
-                 </div>
-               </section>
+                )}
+                {wedding.caterer && (
+                  <div className="bg-white p-4 rounded-xl shadow text-center">
+                    <div className="text-3xl mb-2">🍽️</div>
+                    <p className="font-medium text-gray-700">Caterer</p>
+                    <p className="text-gray-600 text-sm">{wedding.caterer}</p>
+                  </div>
+                )}
+                {wedding.florist && (
+                  <div className="bg-white p-4 rounded-xl shadow text-center">
+                    <div className="text-3xl mb-2">🌸</div>
+                    <p className="font-medium text-gray-700">Florist</p>
+                    <p className="text-gray-600 text-sm">{wedding.florist}</p>
+                  </div>
+                )}
               </div>
-           )}
+            </section>
+          )}
+
+          {/* Slideshow Link */}
+          <section className="py-10 text-center" style={{ background: 'rgba(255,255,255,0.9)' }}>
+            <Link
+              to={`/slideshow/${eventCode || id}`}
+              className="bg-gradient-to-r from-rose-500 to-pink-500 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:scale-105 transition-transform inline-block"
+            >
+              View Wedding Slideshow 🎬
+            </Link>
+          </section>
         </div>
-       </div>
-     )
-   }
+      )}
+
+      {/* Music Player */}
+      <div className="fixed bottom-6 left-6 z-40">
+        <audio ref={audioRef} src={wedding.audio_url || DEFAULT_AUDIO} loop preload="auto" />
+        <button 
+          onClick={() => {
+            if (audioRef.current) {
+              audioRef.current.paused ? audioRef.current.play().catch(console.error) : audioRef.current.pause();
+            }
+          }}
+          className="bg-white p-3 rounded-full shadow-lg hover:scale-110 transition-transform"
+        >
+          🎵 Play Music
+        </button>
+      </div>
+    </div>
+  );
+}

@@ -20,25 +20,75 @@ function Slideshow() {
     const [bulkDownloadProgress, setBulkDownloadProgress] = useState(0)
     const [orderConfig, setOrderConfig] = useState(null)
     const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024)
+    const [eventType, setEventType] = useState('birthday')
 
     const intervalRef = useRef(null)
     const progressRef = useRef(null)
     const musicRef = useRef(null)
     const [popAnimationKey, setPopAnimationKey] = useState(0)
 
+    // Get event-specific text based on type
+    const getEventText = () => {
+        const texts = {
+            birthday: {
+                title: 'Happy Birthday',
+                emoji: '🎂',
+                action: 'Birthday',
+                shareMessage: 'birthday celebration',
+                defaultCelebrant: 'Birthday Star'
+            },
+            wedding: {
+                title: 'Congratulations',
+                emoji: '💍',
+                action: 'Wedding Celebration',
+                shareMessage: 'wedding celebration',
+                defaultCelebrant: 'the Happy Couple'
+            },
+            anniversary: {
+                title: 'Happy Anniversary',
+                emoji: '💕',
+                action: 'Anniversary',
+                shareMessage: 'anniversary celebration',
+                defaultCelebrant: 'the Happy Couple'
+            },
+            party: {
+                title: 'Party Time',
+                emoji: '🎉',
+                action: 'Party',
+                shareMessage: 'party celebration',
+                defaultCelebrant: 'Party Host'
+            },
+            hangout: {
+                title: 'Good Times',
+                emoji: '👋',
+                action: 'Hangout',
+                shareMessage: 'hangout',
+                defaultCelebrant: 'the Crew'
+            },
+            other: {
+                title: 'Special Celebration',
+                emoji: '✨',
+                action: 'Celebration',
+                shareMessage: 'celebration',
+                defaultCelebrant: 'Celebrant'
+            }
+        }
+        return texts[eventType] || texts.birthday
+    }
+
+    const eventText = getEventText()
+    const celebrantName = orderConfig?.recipient_name || orderConfig?.nickname || orderConfig?.couple_names || eventText.defaultCelebrant
+
     useEffect(() => {
-        // trigger animation every time currentIndex changes
         setPopAnimationKey(prev => prev + 1)
     }, [currentIndex])
 
-    // Responsive detection
     useEffect(() => {
         const handleResize = () => setIsDesktop(window.innerWidth >= 1024)
         window.addEventListener('resize', handleResize)
         return () => window.removeEventListener('resize', handleResize)
     }, [])
 
-    // Load order config if code exists
     useEffect(() => {
         if (code) {
             loadOrderConfig()
@@ -46,7 +96,6 @@ function Slideshow() {
         }
     }, [code])
 
-    // Normalize localStorage order format to match Supabase schema
     function normalizeOrder(order) {
         if (!order) return order
         if (order.audioUrl !== undefined || order.recipientName !== undefined) {
@@ -66,22 +115,46 @@ function Slideshow() {
     }
 
     async function loadOrderConfig() {
-        const orders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]')
-        const localOrder = orders.find(o => o.code.toLowerCase() === code?.toLowerCase())
-        if (localOrder) {
-            setOrderConfig(normalizeOrder(localOrder))
-            return
-        }
         try {
+            const { data: registryData, error: registryError } = await supabase
+                .from('event_registry')
+                .select('*')
+                .eq('code', code)
+                .maybeSingle()
+
+            if (registryData && !registryError) {
+                setEventType(registryData.event_type)
+                setOrderConfig({
+                    recipient_name: registryData.event_name,
+                    couple_names: registryData.couple_names,
+                    event_type: registryData.event_type,
+                    audio_url: registryData.audio_url,
+                    background_image: registryData.background_image,
+                    letter: registryData.letter,
+                    nickname: registryData.nickname
+                })
+                return
+            }
+
+            const orders = JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS) || '[]')
+            const localOrder = orders.find(o => o.code?.toLowerCase() === code?.toLowerCase())
+            if (localOrder) {
+                setEventType(localOrder.event_type || 'birthday')
+                setOrderConfig(normalizeOrder(localOrder))
+                return
+            }
+
             const { data, error } = await supabase
                 .from('orders')
                 .select('*')
                 .eq('code', code)
                 .limit(1)
-            if (data && data.length > 0) setOrderConfig(data[0])
-            else if (error) console.log('Supabase orders table not available')
+            if (data && data.length > 0) {
+                setEventType(data[0].event_type || 'birthday')
+                setOrderConfig(data[0])
+            }
         } catch (err) {
-            console.log('Supabase not available')
+            console.log('Error loading order config:', err)
         }
     }
 
@@ -123,7 +196,6 @@ function Slideshow() {
         }
     }
 
-    // Initialize audio element on mount (without playing)
     useEffect(() => {
         if (orderConfig?.audio_url && !musicRef.current) {
             try {
@@ -164,7 +236,17 @@ function Slideshow() {
     function createHearts() {
         const container = document.getElementById('heartsContainer')
         if (!container) return
-        const heartSymbols = ['❤️', '💕', '💗', '💖', '💘', '💝']
+
+        const symbols = {
+            birthday: ['🎂', '🎈', '🎁', '🎉', '✨', '💖', '🎊', '❤️', '💕', '💗'],
+            wedding: ['💍', '💒', '💕', '🌸', '✨', '💖', '🥂', '❤️', '💗', '🌹'],
+            anniversary: ['💕', '❤️', '💖', '💗', '💝', '💘', '🌹', '✨', '🎉', '💐'],
+            party: ['🎉', '🎈', '🎊', '🪅', '✨', '💃', '🕺', '🎶', '🥳', '🎸'],
+            hangout: ['👋', '😎', '✨', '🎮', '🍕', '🎵', '💬', '🎉', '🍔', '🎧'],
+            other: ['✨', '🎉', '💫', '⭐', '🌟', '🎈', '🎊', '❤️', '💕', '🎀']
+        }
+        const heartSymbols = symbols[eventType] || symbols.birthday
+
         container.innerHTML = ''
         for (let i = 0; i < 30; i++) {
             const heart = document.createElement('div')
@@ -208,8 +290,6 @@ function Slideshow() {
         setIsLoading(false)
     }
 
-    const celebrantName = orderConfig?.recipient_name || orderConfig?.nickname || 'Birthday Star'
-
     function nextSlide() {
         setCurrentIndex(prev => (prev + 1) % slides.length)
     }
@@ -243,7 +323,7 @@ function Slideshow() {
         }
     }
 
-    function goBack() { window.location.href = '/' }
+    function goBack() { window.location.href = '/dashboard' }
 
     function openDownloadModal() {
         if (slides[currentIndex]) {
@@ -257,7 +337,7 @@ function Slideshow() {
 
     async function downloadImageFile() {
         if (!downloadImage) { alert("No image available to download"); return }
-        await downloadImageWithOverlay(downloadImage, code ? `birthday-${code}-slide-${downloadSlideIndex + 1}.jpg` : `birthday-slide-${downloadSlideIndex + 1}.jpg`)
+        await downloadImageWithOverlay(downloadImage, code ? `${eventText.action.toLowerCase()}-${code}-slide-${downloadSlideIndex + 1}.jpg` : `${eventText.action.toLowerCase()}-slide-${downloadSlideIndex + 1}.jpg`)
     }
 
     async function downloadAllImages() {
@@ -266,7 +346,7 @@ function Slideshow() {
         setBulkDownloadProgress(0)
         try {
             for (let i = 0; i < slides.length; i++) {
-                const filename = code ? `birthday-${code}-slide-${i + 1}.jpg` : `birthday-slide-${i + 1}.jpg`
+                const filename = code ? `${eventText.action.toLowerCase()}-${code}-slide-${i + 1}.jpg` : `${eventText.action.toLowerCase()}-slide-${i + 1}.jpg`
                 await downloadImageWithOverlay(slides[i].photo, filename, true)
                 setBulkDownloadProgress(Math.round(((i + 1) / slides.length) * 100))
             }
@@ -349,549 +429,237 @@ function Slideshow() {
         })
     }
 
-    // Video export functions - Production-ready with robust audio-video sync
-    async function exportVideo() {
-        if (!slides.length) {
-            alert('No slides to export');
-            return;
-        }
-
-        const audioUrl = orderConfig?.audio_url;
-        if (!audioUrl) {
-            alert('No background music configured for this page.');
-            return;
-        }
-
-        setIsRecording(true);
-        setRecordingProgress(0);
-
-        // ────────────────────────────────────────────────────────
-        // 1. Canvas & Video Stream Setup
-        // ────────────────────────────────────────────────────────
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d', { alpha: false });
-        const FPS = 30;
-        const width = 720;
-        const height = 1280;
-        canvas.width = width;
-        canvas.height = height;
-
-        // Capture canvas stream at target FPS
-        const videoStream = canvas.captureStream(FPS);
-        const videoTrack = videoStream.getVideoTracks()[0];
-
-        if (!videoTrack) {
-            alert('Could not capture video stream. Please try again.');
-            setIsRecording(false);
-            return;
-        }
-
-        // Apply constraints for consistent frame rate
-        try {
-            await videoTrack.applyConstraints({
-                frameRate: { ideal: FPS, min: 24, max: 30 }
-            });
-        } catch (e) {
-            console.warn('Frame rate constraint not supported:', e);
-        }
-
-        // ────────────────────────────────────────────────────────
-        // 2. Audio Context & Stream Setup
-        // ────────────────────────────────────────────────────────
-        let audioElement = null;
-        let audioContext = null;
-        let audioSource = null;
-        let audioDestination = null;
-        let audioTracks = [];
-        let audioInitialized = false;
-
-        try {
-            // Create a fresh audio element for this export
-            audioElement = new Audio(audioUrl);
-            audioElement.loop = false;
-            audioElement.volume = 0.3;
-            audioElement.crossOrigin = 'anonymous';
-
-            // Create AudioContext for real-time routing
-            audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                sampleRate: 48000 // Standard for video
-            });
-
-            // Resume context (required after user gesture)
-            if (audioContext.state === 'suspended') {
-                await audioContext.resume();
-            }
-
-            // Create MediaElementSource from the audio element
-            audioSource = audioContext.createMediaElementSource(audioElement);
-
-            // Create destination stream for recording
-            audioDestination = audioContext.createMediaStreamDestination();
-
-            // Connect: source → destination (for recording)
-            // Also connect to main output so user can hear it during export
-            audioSource.connect(audioDestination);
-            audioSource.connect(audioContext.destination);
-
-            // Extract audio track from the destination stream
-            audioTracks = audioDestination.stream.getAudioTracks();
-
-            if (audioTracks.length === 0) {
-                throw new Error('No audio track could be captured');
-            }
-
-            // Configure audio track for better quality
-            const settings = audioTracks[0].getSettings();
-            console.log('Audio track settings:', settings);
-
-            audioInitialized = true;
-        } catch (err) {
-            console.error('Audio setup failed:', err);
-            // Don't block export if audio fails - continue with video only
-            alert('Could not capture audio. The video will export without background music.');
-            audioTracks = [];
-            audioInitialized = false;
-        }
-
-        // ────────────────────────────────────────────────────────
-        // 3. Combine Streams (Video + Audio)
-        // ────────────────────────────────────────────────────────
-        let combinedStream;
-        try {
-            if (audioInitialized && audioTracks.length > 0) {
-                // Merge video and audio tracks
-                combinedStream = new MediaStream([
-                    videoTrack,
-                    ...audioTracks
-                ]);
-                console.log('Combined stream created with audio');
-            } else {
-                // Video only
-                combinedStream = new MediaStream([videoTrack]);
-                console.log('Combined stream created (video only)');
-            }
-        } catch (err) {
-            console.error('Failed to combine streams:', err);
-            combinedStream = new MediaStream([videoTrack]);
-        }
-
-        // ────────────────────────────────────────────────────────
-        // 4. MediaRecorder Configuration
-        // ────────────────────────────────────────────────────────
-        // Prioritize formats that support multi-track and wide compatibility
-        let mimeType = '';
-        const preferredTypes = [
-            // MP4 with H.264 + AAC (best compatibility)
-            'video/mp4; codecs="avc1.640028,mp4a.40.2"',
-            'video/mp4; codecs="avc1.42E01E,mp4a.40.2"',
-            // WebM with VP9 + Opus (good quality, open format)
-            'video/webm; codecs="vp9,opus"',
-            'video/webm; codecs="vp8,opus"',
-            // Fallback
-            'video/webm',
-            'video/mp4'
-        ];
-
-        for (const type of preferredTypes) {
-            if (MediaRecorder.isTypeSupported(type)) {
-                mimeType = type;
-                console.log('Selected MIME type:', type);
-                break;
-            }
-        }
-
-        if (!mimeType) {
-            alert('No supported video format found in this browser.');
-            cleanup();
-            return;
-        }
-
-        // Configure recorder for high quality
-        const options = {
-            mimeType,
-            videoBitsPerSecond: 5_000_000, // 5 Mbps for good quality
-            audioBitsPerSecond: 192_000    // 192 kbps for audio quality
-        };
-
-        let recorder;
-        try {
-            recorder = new MediaRecorder(combinedStream, options);
-        } catch (err) {
-            console.warn('Failed with options, trying without:', err);
-            // Fallback to basic configuration
-            recorder = new MediaRecorder(combinedStream);
-        }
-
-        const chunks = [];
-        let startTime = 0;
-        let expectedDuration = 0;
-
-        recorder.ondataavailable = (e) => {
-            if (e.data && e.data.size > 0) {
-                chunks.push(e.data);
-            }
-        };
-
-        recorder.onstart = () => {
-            startTime = Date.now();
-            console.log('Recording started at:', new Date().toISOString());
-        };
-
-        recorder.onstop = () => {
-            const endTime = Date.now();
-            const actualDuration = (endTime - startTime) / 1000;
-            console.log('Recording stopped. Duration:', actualDuration, 's');
-            console.log('Chunks received:', chunks.length);
-
-            if (chunks.length === 0) {
-                alert('No video data was recorded. Please try again.');
-                cleanup();
-                return;
-            }
-
-            // Create and download the video
-            const blob = new Blob(chunks, { type: mimeType });
-
-            // Estimate video duration from blob size as fallback
-            if (blob.size === 0) {
-                alert('The recorded video is empty. Please try again.');
-                cleanup();
-                return;
-            }
-
-            const url = URL.createObjectURL(blob);
-            const filename = code
-                ? `birthday-slideshow-${code}-${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`
-                : `birthday-slideshow-${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
-
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-
-            // Cleanup URLs after a delay
-            setTimeout(() => {
-                URL.revokeObjectURL(url);
-            }, 10000);
-
-            cleanup();
-        };
-
-        recorder.onerror = (e) => {
-            console.error('MediaRecorder error:', e.error);
-            alert('An error occurred during recording: ' + e.error.message);
-            cleanup();
-        };
-
-        // ────────────────────────────────────────────────────────
-        // 5. Calculate Frame Timing
-        // ────────────────────────────────────────────────────────
-        // Calculate expected duration based on content (not audio)
-        // This ensures we render all frames before stopping
-        const INTRO_FRAMES = 90;
-        const TRANSITION_FRAMES_PER_SLIDE = 30;
-        const SLIDE_FRAMES = 150;
-        const OUTRO_FRAMES = 180;
-
-        const totalFrames = INTRO_FRAMES +
-            (slides.length - 1) * TRANSITION_FRAMES_PER_SLIDE +
-            slides.length * SLIDE_FRAMES +
-            OUTRO_FRAMES;
-
-        expectedDuration = totalFrames / FPS;
-        console.log('Expected recording duration:', expectedDuration.toFixed(2), 's');
-
-        // ────────────────────────────────────────────────────────
-        // 6. Render & Record
-        // ────────────────────────────────────────────────────────
-        try {
-            // Start recording first
-            recorder.start(100); // Collect data every 100ms
-
-            // Give audio a moment to start if present
-            if (audioElement && audioInitialized) {
-                try {
-                    await audioElement.play();
-                    console.log('Background audio started');
-                } catch (err) {
-                    console.warn('Could not play audio:', err);
-                }
-            }
-
-            // Render intro
-            await renderIntro(ctx, width, height);
-            setRecordingProgress(10);
-
-            // Render each slide with transitions
-            for (let i = 0; i < slides.length; i++) {
-                // Transition from previous slide (except first)
-                if (i > 0) {
-                    await renderTransition(ctx, width, height, slides[i - 1], slides[i]);
-                }
-
-                // Render the slide
-                await renderSlide(ctx, width, height, slides[i], i + 1, slides.length);
-
-                // Update progress (50% intro, 40% slides, 10% outro)
-                const slideProgress = 50 + Math.round(((i + 1) / slides.length) * 40);
-                setRecordingProgress(slideProgress);
-            }
-
-            // Render outro
-            await renderOutro(ctx, width, height);
-            setRecordingProgress(95);
-
-            // Wait for final frame to be captured
-            await new Promise(resolve => setTimeout(resolve, 1000 / FPS));
-
-            // Stop recording
-            recorder.stop();
-
-            // Stop audio if playing
-            if (audioElement) {
-                audioElement.pause();
-                audioElement.currentTime = 0;
-            }
-
-            setRecordingProgress(100);
-
-        } catch (err) {
-            console.error('Rendering error:', err);
-            alert('An error occurred during rendering: ' + err.message);
-            recorder.stop();
-            cleanup();
-        }
-
-        // ────────────────────────────────────────────────────────
-        // 7. Cleanup Function
-        // ────────────────────────────────────────────────────────
-        function cleanup() {
-            // Stop all media tracks
-            if (combinedStream) {
-                combinedStream.getTracks().forEach(track => {
-                    track.stop();
-                });
-            }
-
-            if (videoTrack) {
-                videoTrack.stop();
-            }
-
-            if (audioTracks && audioTracks.length > 0) {
-                audioTracks.forEach(track => track.stop());
-            }
-
-            // Close AudioContext
-            if (audioContext) {
-                audioContext.close().catch(err => {
-                    console.warn('Error closing AudioContext:', err);
-                });
-            }
-
-            // Clean up audio element
-            if (audioElement) {
-                audioElement.pause();
-                audioElement.src = '';
-                audioElement.load();
-                audioElement = null;
-            }
-
-            // Clear references
-            audioSource = null;
-            audioDestination = null;
-            audioTracks = [];
-
-            setIsRecording(false);
-            setRecordingProgress(0);
-
-            console.log('Cleanup completed');
-        }
-    }
+    // ========== VIDEO RENDERING FUNCTIONS ==========
 
     async function renderIntro(ctx, width, height) {
         const fps = 30
-        const totalFrames = 90 // 3 seconds
+        const totalFrames = 120 // 4 seconds (increased for more dramatic intro)
 
-        // Particle system
+        // Enhanced particle system with more variety
         const particles = []
-        const particleCount = 25
+        const particleCount = 35 // More particles
+
+        const particleTypes = {
+            birthday: ['❤️', '🎂', '🎈', '🎁', '✨', '🎉', '🎊', '💝'],
+            wedding: ['💍', '💒', '💕', '🌸', '✨', '💖', '🥂', '🌹', '🎊'],
+            anniversary: ['💕', '❤️', '💖', '💗', '💝', '💘', '🌹', '✨', '🎉', '💐'],
+            party: ['🎉', '🎈', '🎊', '🪅', '✨', '💃', '🕺', '🎶', '🥳', '🎸'],
+            hangout: ['👋', '😎', '✨', '🎮', '🍕', '🎵', '💬', '🎉', '🍔', '🎧'],
+            other: ['✨', '🎉', '💫', '⭐', '🌟', '🎈', '🎊', '❤️', '💕', '🎀']
+        }
+        const particleEmojis = particleTypes[eventType] || particleTypes.birthday
+
         for (let i = 0; i < particleCount; i++) {
             particles.push({
                 x: Math.random() * width,
                 y: Math.random() * height,
-                size: 15 + Math.random() * 25,
-                speedX: (Math.random() - 0.5) * 1.5,
-                speedY: 0.5 + Math.random() * 1.2,
-                opacity: 0.3 + Math.random() * 0.6,
+                size: 15 + Math.random() * 35,
+                speedX: (Math.random() - 0.5) * 2,
+                speedY: 0.8 + Math.random() * 1.8,
+                opacity: 0.3 + Math.random() * 0.7,
                 rotation: Math.random() * 360,
-                rotationSpeed: (Math.random() - 0.5) * 3,
-                type: Math.random() > 0.7 ? 'star' : 'heart'
+                rotationSpeed: (Math.random() - 0.5) * 4,
+                type: particleEmojis[Math.floor(Math.random() * particleEmojis.length)],
+                waveOffset: Math.random() * Math.PI * 2,
+                waveSpeed: 0.02 + Math.random() * 0.03
             })
         }
 
-        // Background gradient offsets (moving)
+        // Add floating sparkles that twinkle
+        const sparkles = []
+        const sparkleCount = 40
+        for (let i = 0; i < sparkleCount; i++) {
+            sparkles.push({
+                x: Math.random() * width,
+                y: Math.random() * height,
+                size: 2 + Math.random() * 4,
+                speed: 0.5 + Math.random() * 1.5,
+                phase: Math.random() * Math.PI * 2,
+                twinkleSpeed: 0.05 + Math.random() * 0.1
+            })
+        }
+
         let offsetX = 0, offsetY = 0
+        let time = 0
 
         for (let i = 0; i < totalFrames; i++) {
+            time = i / fps
             const progress = i / totalFrames
-            const easeProgress = 1 - Math.pow(1 - progress, 3) // cubic out
+            const easeProgress = 1 - Math.pow(1 - progress, 3)
+            const easeInOut = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2
 
-            // --- Animated gradient background ---
-            offsetX = Math.sin(i * 0.02) * 50
-            offsetY = Math.cos(i * 0.03) * 30
+            // Animated background with shifting colors
+            offsetX = Math.sin(i * 0.02) * 60
+            offsetY = Math.cos(i * 0.03) * 40
 
+            // Dynamic gradient that shifts colors over time
+            const hueShift = (i * 0.5) % 360
             const grad = ctx.createLinearGradient(
                 width / 2 + offsetX, 0,
                 width / 2 - offsetX, height
             )
-            grad.addColorStop(0, '#0f0c29')
-            grad.addColorStop(0.5, '#302b63')
-            grad.addColorStop(1, '#24243e')
+
+            if (eventType === 'birthday') {
+                grad.addColorStop(0, '#0f0c29')
+                grad.addColorStop(0.5, '#302b63')
+                grad.addColorStop(1, '#24243e')
+            } else if (eventType === 'wedding') {
+                grad.addColorStop(0, '#1a0b2e')
+                grad.addColorStop(0.5, '#4a1942')
+                grad.addColorStop(1, '#893168')
+            } else if (eventType === 'anniversary') {
+                grad.addColorStop(0, '#1a0a1a')
+                grad.addColorStop(0.5, '#3d1a3d')
+                grad.addColorStop(1, '#6b2d5c')
+            } else {
+                grad.addColorStop(0, '#0f0c29')
+                grad.addColorStop(0.5, '#302b63')
+                grad.addColorStop(1, '#24243e')
+            }
+
             ctx.fillStyle = grad
             ctx.fillRect(0, 0, width, height)
 
-            // Add a subtle vignette
-            ctx.save()
-            ctx.globalCompositeOperation = 'overlay'
-            ctx.fillStyle = 'rgba(0,0,0,0.15)'
-            ctx.fillRect(0, 0, width, height)
-            ctx.restore()
+            // Draw floating sparkles with twinkling effect
+            sparkles.forEach(sparkle => {
+                const twinkle = 0.3 + 0.7 * (Math.sin(i * sparkle.twinkleSpeed + sparkle.phase) + 1) / 2
+                ctx.beginPath()
+                ctx.arc(sparkle.x, sparkle.y, sparkle.size * (0.5 + twinkle * 0.5), 0, Math.PI * 2)
+                ctx.fillStyle = `rgba(255, 255, 200, ${twinkle * 0.6})`
+                ctx.fill()
+            })
 
-            // --- Draw particles (hearts & stars) ---
+            // Draw animated particles with wavy motion
             particles.forEach(p => {
-                p.x += p.speedX
+                // Add wavy horizontal movement
+                const waveX = Math.sin(i * p.waveSpeed + p.waveOffset) * 20
+                p.x += p.speedX + waveX * 0.05
                 p.y += p.speedY
+
                 p.rotation += p.rotationSpeed
-                if (p.y < -50) p.y = height + 50
+
+                if (p.y < -50) {
+                    p.y = height + 50
+                    p.x = Math.random() * width
+                }
                 if (p.x < -50) p.x = width + 50
                 if (p.x > width + 50) p.x = -50
 
                 ctx.save()
                 ctx.translate(p.x, p.y)
                 ctx.rotate(p.rotation * Math.PI / 180)
-                ctx.globalAlpha = p.opacity * (0.6 + 0.4 * Math.sin(i * 0.05 + p.x * 0.01))
+
+                // Pulsing opacity
+                const pulse = 0.5 + 0.5 * Math.sin(i * 0.05 + p.x * 0.01)
+                ctx.globalAlpha = p.opacity * (0.6 + 0.4 * pulse)
+
+                // Scale with pulse
+                const scale = 0.8 + 0.4 * Math.sin(i * 0.08)
+                ctx.scale(scale, scale)
+
                 ctx.font = `${p.size}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`
-                ctx.fillStyle = p.type === 'heart' ? '#ff6b9d' : '#ffd966'
-                ctx.fillText(p.type === 'heart' ? '❤️' : '⭐', 0, 0)
+                ctx.fillStyle = '#ff6b9d'
+                ctx.fillText(p.type, 0, 0)
                 ctx.restore()
             })
 
-            // --- Main title: animated scale and gradient fill ---
-            const scale = 0.6 + easeProgress * 0.5
-            const alpha = Math.min(1, progress * 2.5)
+            // Animated decorative circles in background
+            for (let c = 0; c < 3; c++) {
+                const circleScale = 0.5 + Math.sin(i * 0.02 + c) * 0.3
+                const circleX = width / 2 + Math.sin(i * 0.01 + c) * 100
+                const circleY = height / 2 + Math.cos(i * 0.015 + c) * 100
+                ctx.beginPath()
+                ctx.arc(circleX, circleY, 50 * circleScale, 0, Math.PI * 2)
+                ctx.fillStyle = `rgba(255, 100, 150, ${0.05 * (1 + Math.sin(i * 0.03))})`
+                ctx.fill()
+            }
+
+            // Main title animation
+            const scale = 0.5 + easeProgress * 0.6
+            const alpha = Math.min(1, progress * 2)
+            const yOffset = -20 * (1 - easeProgress)
 
             ctx.save()
             ctx.shadowColor = 'rgba(255, 105, 180, 0.6)'
-            ctx.shadowBlur = 20
-            ctx.translate(width / 2, height / 2 - 40)
+            ctx.shadowBlur = 30
+            ctx.translate(width / 2, height / 2 - 40 + yOffset)
             ctx.scale(scale, scale)
             ctx.globalAlpha = alpha
 
-            // Gradient text for "Happy Birthday"
-            const textGrad = ctx.createLinearGradient(-150, 0, 150, 0)
+            // Gradient text with glow effect
+            const textGrad = ctx.createLinearGradient(-200, 0, 200, 0)
             textGrad.addColorStop(0, '#f9c1d9')
-            textGrad.addColorStop(0.5, '#ff9eb5')
+            textGrad.addColorStop(0.3, '#ff9eb5')
+            textGrad.addColorStop(0.7, '#ff6b9d')
             textGrad.addColorStop(1, '#f9c1d9')
             ctx.fillStyle = textGrad
-            ctx.font = 'bold 70px "Playfair Display", "Poppins", serif'
+
+            // Main title text
+            ctx.font = 'bold 80px "Playfair Display", "Poppins", serif'
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
-            ctx.fillText('Happy', 0, -20)
-            ctx.fillText('Birthday', 0, 40)
+            ctx.fillText(eventText.title, 0, -30)
 
-            // Second line: recipient name with bounce effect
-            const bounce = Math.sin(i * 0.2) * 5
-            ctx.font = 'bold 85px "Dancing Script", "Playfair Display", cursive'
+            // Secondary line with celebrant name - animated bounce
+            const bounce = Math.sin(i * 0.15) * 8
+            const secondScale = 0.9 + Math.sin(i * 0.1) * 0.05
+            ctx.font = `bold ${85 * secondScale}px "Dancing Script", "Playfair Display", cursive`
             ctx.fillStyle = '#fff3e6'
-            ctx.shadowBlur = 15
-            ctx.fillText(`${celebrantName} 🎂`, 0, 140 + bounce)
+            ctx.shadowBlur = 25
+            ctx.fillText(`${celebrantName} ${eventText.emoji}`, 0, 100 + bounce)
             ctx.restore()
 
-            // --- Animated sparkles (rotating and scaling) ---
-            for (let s = 0; s < 12; s++) {
-                const angle = (i * 0.08 + s * Math.PI / 6) % (Math.PI * 2)
-                const radius = 200 + Math.sin(i * 0.1) * 40
-                const sparkleX = width / 2 + Math.cos(angle) * radius
-                const sparkleY = height / 2 + Math.sin(angle) * radius
-                const sparkleScale = 0.8 + Math.sin(i * 0.3 + s) * 0.5
-                const sparkleAlpha = Math.max(0, Math.sin(i * 0.2 + s) * 0.8)
-
-                ctx.save()
-                ctx.translate(sparkleX, sparkleY)
-                ctx.scale(sparkleScale, sparkleScale)
-                ctx.globalAlpha = sparkleAlpha
-                ctx.fillStyle = '#fbbf24'
-                ctx.font = '28px "Segoe UI Emoji"'
-                ctx.fillText('✨', 0, 0)
-                ctx.restore()
+            // Animated confetti/particle bursts at key moments
+            if (progress > 0.3 && progress < 0.7 && i % 10 === 0) {
+                for (let b = 0; b < 5; b++) {
+                    const angle = Math.random() * Math.PI * 2
+                    const radius = 100 + Math.random() * 150
+                    const x = width / 2 + Math.cos(angle) * radius
+                    const y = height / 2 + Math.sin(angle) * radius
+                    ctx.save()
+                    ctx.translate(x, y)
+                    ctx.globalAlpha = 0.6
+                    ctx.font = `${20 + Math.random() * 15}px "Segoe UI Emoji"`
+                    ctx.fillStyle = '#ffd700'
+                    ctx.fillText('✨', 0, 0)
+                    ctx.restore()
+                }
             }
 
-            await new Promise(r => setTimeout(r, 1000 / fps))
-        }
-    }
-
-    async function renderTransition(ctx, width, height, prevSlide, nextSlide) {
-        const fps = 30
-        const frames = 30 // 1 second transition
-
-        const prevImg = new Image()
-        prevImg.crossOrigin = 'anonymous'
-        await new Promise(resolve => { prevImg.onload = resolve; prevImg.src = prevSlide.photo })
-
-        const nextImg = new Image()
-        nextImg.crossOrigin = 'anonymous'
-        await new Promise(resolve => { nextImg.onload = resolve; nextImg.src = nextSlide.photo })
-
-        for (let i = 0; i < frames; i++) {
-            const progress = i / frames
-            // Easing: easeOutCubic
-            const easeProgress = 1 - Math.pow(1 - progress, 3)
-
-            ctx.clearRect(0, 0, width, height)
-
-            // --- Previous slide: zoom out and fade out ---
-            const prevScale = 1 - easeProgress * 0.15  // shrink slightly
-            const prevWidth = width * prevScale
-            const prevHeight = height * prevScale
-            const prevX = (width - prevWidth) / 2
-            const prevY = (height - prevHeight) / 2
-
+            // Animated decorative borders
+            const borderProgress = easeInOut
+            const borderWidth = width * 0.02
             ctx.save()
-            ctx.globalAlpha = 1 - easeProgress
-            // Draw previous image with scaling
-            const imgRatio = prevImg.width / prevImg.height
-            const canvasRatio = width / height
-            let sx = 0, sy = 0, sw = prevImg.width, sh = prevImg.height
-            if (imgRatio > canvasRatio) {
-                sw = prevImg.height * canvasRatio
-                sx = (prevImg.width - sw) / 2
-            } else {
-                sh = prevImg.width / canvasRatio
-                sy = (prevImg.height - sh) / 2
-            }
-            ctx.drawImage(prevImg, sx, sy, sw, sh, prevX, prevY, prevWidth, prevHeight)
-            ctx.restore()
+            ctx.globalAlpha = borderProgress * 0.8
+            ctx.strokeStyle = '#ff6b9d'
+            ctx.lineWidth = borderWidth
+            ctx.strokeRect(borderWidth, borderWidth, width - borderWidth * 2, height - borderWidth * 2)
 
-            // --- Next slide: zoom in and fade in ---
-            const nextScale = 0.85 + easeProgress * 0.15  // grow from 0.85 to 1
-            const nextWidth = width * nextScale
-            const nextHeight = height * nextScale
-            const nextX = (width - nextWidth) / 2
-            const nextY = (height - nextHeight) / 2
+            // Add corner decorations
+            const cornerSize = 40
+            ctx.beginPath()
+            ctx.moveTo(borderWidth, borderWidth + cornerSize)
+            ctx.lineTo(borderWidth, borderWidth)
+            ctx.lineTo(borderWidth + cornerSize, borderWidth)
+            ctx.stroke()
 
-            ctx.save()
-            ctx.globalAlpha = easeProgress
-            let nx = 0, ny = 0, nw = nextImg.width, nh = nextImg.height
-            if (nextImg.width / nextImg.height > canvasRatio) {
-                nw = nextImg.height * canvasRatio
-                nx = (nextImg.width - nw) / 2
-            } else {
-                nh = nextImg.width / canvasRatio
-                ny = (nextImg.height - nh) / 2
-            }
-            ctx.drawImage(nextImg, nx, ny, nw, nh, nextX, nextY, nextWidth, nextHeight)
+            ctx.beginPath()
+            ctx.moveTo(width - borderWidth, borderWidth + cornerSize)
+            ctx.lineTo(width - borderWidth, borderWidth)
+            ctx.lineTo(width - borderWidth - cornerSize, borderWidth)
+            ctx.stroke()
+
+            ctx.beginPath()
+            ctx.moveTo(borderWidth, height - borderWidth - cornerSize)
+            ctx.lineTo(borderWidth, height - borderWidth)
+            ctx.lineTo(borderWidth + cornerSize, height - borderWidth)
+            ctx.stroke()
+
+            ctx.beginPath()
+            ctx.moveTo(width - borderWidth, height - borderWidth - cornerSize)
+            ctx.lineTo(width - borderWidth, height - borderWidth)
+            ctx.lineTo(width - borderWidth - cornerSize, height - borderWidth)
+            ctx.stroke()
             ctx.restore()
 
             await new Promise(r => setTimeout(r, 1000 / fps))
@@ -902,7 +670,6 @@ function Slideshow() {
         const fps = 30
         const totalFrames = 180 // 6 seconds
 
-        // Stars (twinkling background)
         const stars = []
         for (let s = 0; s < 30; s++) {
             stars.push({
@@ -914,8 +681,17 @@ function Slideshow() {
             })
         }
 
-        // Floating hearts (rise up)
         const hearts = []
+        const outroEmojis = {
+            birthday: ['🎂', '🎈', '❤️'],
+            wedding: ['💍', '💒', '🌸'],
+            anniversary: ['💕', '❤️', '🌹'],
+            party: ['🎉', '🎈', '🎊'],
+            hangout: ['👋', '😎', '✨'],
+            other: ['✨', '🎉', '💫']
+        }
+        const emojiList = outroEmojis[eventType] || outroEmojis.birthday
+
         for (let h = 0; h < 12; h++) {
             hearts.push({
                 x: Math.random() * width,
@@ -924,18 +700,14 @@ function Slideshow() {
                 speed: 0.5 + Math.random() * 1.2,
                 opacity: 0.4 + Math.random() * 0.5,
                 rotation: Math.random() * 360,
-                rotSpeed: (Math.random() - 0.5) * 2
+                rotSpeed: (Math.random() - 0.5) * 2,
+                emoji: emojiList[Math.floor(Math.random() * emojiList.length)]
             })
         }
 
-        // Background gradient offsets (moving)
-        let offsetHue = 0
-
         for (let i = 0; i < totalFrames; i++) {
             const progress = i / totalFrames
-            offsetHue = (offsetHue + 0.5) % 360
 
-            // --- Animated radial gradient background ---
             const grad = ctx.createRadialGradient(
                 width / 2 + Math.sin(i * 0.02) * 30,
                 height / 2 + Math.cos(i * 0.03) * 20,
@@ -950,7 +722,6 @@ function Slideshow() {
             ctx.fillStyle = grad
             ctx.fillRect(0, 0, width, height)
 
-            // --- Twinkling stars ---
             stars.forEach(star => {
                 const twinkle = Math.sin(i * star.speed + star.twinkle) * 0.5 + 0.5
                 ctx.fillStyle = `rgba(255, 240, 200, ${twinkle * 0.8})`
@@ -959,7 +730,6 @@ function Slideshow() {
                 ctx.fill()
             })
 
-            // --- Floating hearts (slowly rise and rotate) ---
             hearts.forEach(heart => {
                 heart.y -= heart.speed
                 heart.rotation += heart.rotSpeed
@@ -973,23 +743,20 @@ function Slideshow() {
                 ctx.globalAlpha = heart.opacity * (0.7 + 0.3 * Math.sin(i * 0.05))
                 ctx.font = `${heart.size}px "Segoe UI Emoji", "Apple Color Emoji"`
                 ctx.fillStyle = '#ff6b9d'
-                ctx.fillText('❤️', 0, 0)
+                ctx.fillText(heart.emoji, 0, 0)
                 ctx.restore()
             })
 
-            // --- Text animation phases ---
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
 
             if (progress < 0.25) {
-                // Fade in "Thank You"
                 const fadeProgress = progress / 0.25
                 ctx.globalAlpha = Math.min(1, fadeProgress * 1.2)
 
                 ctx.save()
                 ctx.shadowColor = 'rgba(255, 105, 180, 0.8)'
                 ctx.shadowBlur = 25
-                // Gradient text
                 const gradText = ctx.createLinearGradient(-200, 0, 200, 0)
                 gradText.addColorStop(0, '#ff9eb5')
                 gradText.addColorStop(0.5, '#ff6b9d')
@@ -1000,7 +767,6 @@ function Slideshow() {
                 ctx.restore()
             }
             else if (progress < 0.5) {
-                // Hold "Thank You" with slight pulse
                 const pulse = 1 + Math.sin(i * 0.2) * 0.03
                 ctx.globalAlpha = 1
                 ctx.save()
@@ -1016,7 +782,6 @@ function Slideshow() {
                 ctx.restore()
             }
             else if (progress < 0.6) {
-                // Fade out "Thank You"
                 const fadeProgress = (progress - 0.5) / 0.1
                 ctx.globalAlpha = 1 - fadeProgress
                 ctx.save()
@@ -1028,11 +793,7 @@ function Slideshow() {
                 ctx.restore()
             }
             else {
-                // Credits section (progress > 0.6)
                 ctx.globalAlpha = 1
-                const creditProgress = (progress - 0.6) / 0.4
-
-                // "Made with Love" with bounce
                 const bounce = Math.sin(i * 0.15) * 8
                 ctx.save()
                 ctx.shadowBlur = 15
@@ -1046,17 +807,15 @@ function Slideshow() {
                 ctx.fillText('Made with Love', width / 2, height / 2 - 60 + bounce)
                 ctx.restore()
 
-                // "Happy Birthday"
                 ctx.fillStyle = '#ffffff'
                 ctx.font = 'bold 32px "Poppins", sans-serif'
-                ctx.fillText('❤️ Happy Birthday! 🎂', width / 2, height / 2 + 20)
+                ctx.fillText(`${eventText.emoji} ${eventText.title}! 🎉`, width / 2, height / 2 + 20)
 
-                // Credit line
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
                 ctx.font = 'bold 22px "Poppins", sans-serif'
                 ctx.fillText('Designed by KofiLartey', width / 2, height / 2 + 100)
 
-                // Subtle additional line (optional)
+                const creditProgress = (progress - 0.6) / 0.4
                 if (creditProgress > 0.7) {
                     ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'
                     ctx.font = '18px "Poppins", sans-serif'
@@ -1069,18 +828,17 @@ function Slideshow() {
         }
     }
 
-    async function renderSlide(ctx, width, height, slide, slideNumber, totalSlides) {
+    async function renderSlideForVideo(ctx, width, height, slide, slideNumber, totalSlides) {
         const img = new Image()
         img.crossOrigin = "anonymous"
         await new Promise(resolve => { img.onload = resolve; img.src = slide.photo })
 
         const fps = 30
-        const frames = 150 // 5 seconds
+        const frames = 150
 
         for (let frame = 0; frame < frames; frame++) {
             ctx.clearRect(0, 0, width, height)
 
-            // --- Draw image (cover) ---
             const imgRatio = img.width / img.height
             const canvasRatio = width / height
             let sx = 0, sy = 0, sw = img.width, sh = img.height
@@ -1093,7 +851,6 @@ function Slideshow() {
             }
             ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height)
 
-            // --- Subtle vignette (darkens edges) ---
             const vignette = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, width / 1.5)
             vignette.addColorStop(0, 'rgba(0,0,0,0)')
             vignette.addColorStop(0.7, 'rgba(0,0,0,0.2)')
@@ -1101,7 +858,6 @@ function Slideshow() {
             ctx.fillStyle = vignette
             ctx.fillRect(0, 0, width, height)
 
-            // --- Text overlay (bottom, modern glass card) ---
             const padding = width * 0.04
             const nameFontSize = width * 0.045
             const messageFontSize = width * 0.03
@@ -1128,11 +884,9 @@ function Slideshow() {
             const barHeight = padding * 2 + nameFontSize + (msgLines.length * lineHeight) + padding
             const barWidth = width * 0.8
             const barX = (width - barWidth) / 2
-            const barY = height - barHeight - 40
-            const radius = width * 0.02
+            const barY = height - barHeight - 40;
+            const radius = width * 0.02;
 
-            // Glassmorphic background
-            ctx.shadowBlur = 0
             ctx.beginPath()
             ctx.moveTo(barX + radius, barY)
             ctx.lineTo(barX + barWidth - radius, barY)
@@ -1146,12 +900,10 @@ function Slideshow() {
             ctx.closePath()
             ctx.fillStyle = 'rgba(0, 0, 0, 0.65)'
             ctx.fill()
-            // Subtle border
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'
             ctx.lineWidth = 1.5
             ctx.stroke()
 
-            // Name (gradient text)
             const nameGrad = ctx.createLinearGradient(barX + 50, barY + padding, barX + barWidth - 50, barY + padding + nameFontSize)
             nameGrad.addColorStop(0, '#f9c1d9')
             nameGrad.addColorStop(1, '#ff6b9d')
@@ -1163,7 +915,6 @@ function Slideshow() {
             ctx.textBaseline = 'top'
             ctx.fillText(slide.name, width / 2, barY + padding)
 
-            // Message
             ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
             ctx.font = `${messageFontSize}px "Poppins", sans-serif`
             ctx.shadowBlur = 4
@@ -1173,14 +924,11 @@ function Slideshow() {
                 yOffset += lineHeight
             }
 
-            // Slide counter (small badge, top right)
             ctx.textAlign = 'right'
             ctx.font = `bold ${width * 0.025}px "Poppins", sans-serif`
             ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
-            ctx.shadowBlur = 2
             ctx.fillText(`${slideNumber}/${totalSlides}`, width - 20, 30)
 
-            // Credit (optional, bottom left)
             ctx.textAlign = 'left'
             ctx.font = `${width * 0.018}px "Poppins", sans-serif`
             ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'
@@ -1191,20 +939,234 @@ function Slideshow() {
         }
     }
 
+    // ========== VIDEO EXPORT FUNCTION ==========
+
+    async function exportVideo() {
+        if (!slides.length) {
+            alert('No slides to export');
+            return;
+        }
+
+        const audioUrl = orderConfig?.audio_url;
+        if (!audioUrl) {
+            alert('No background music configured for this page.');
+            return;
+        }
+
+        setIsRecording(true);
+        setRecordingProgress(0);
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        const FPS = 30;
+        const width = 720;
+        const height = 1280;
+        canvas.width = width;
+        canvas.height = height;
+
+        const videoStream = canvas.captureStream(FPS);
+        const videoTrack = videoStream.getVideoTracks()[0];
+
+        if (!videoTrack) {
+            alert('Could not capture video stream. Please try again.');
+            setIsRecording(false);
+            return;
+        }
+
+        try {
+            await videoTrack.applyConstraints({
+                frameRate: { ideal: FPS, min: 24, max: 30 }
+            });
+        } catch (e) {
+            console.warn('Frame rate constraint not supported:', e);
+        }
+
+        let audioElement = null;
+        let audioContext = null;
+        let audioSource = null;
+        let audioDestination = null;
+        let audioTracks = [];
+        let audioInitialized = false;
+
+        try {
+            audioElement = new Audio(audioUrl);
+            audioElement.loop = false;
+            audioElement.volume = 0.3;
+            audioElement.crossOrigin = 'anonymous';
+
+            audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                sampleRate: 48000
+            });
+
+            if (audioContext.state === 'suspended') {
+                await audioContext.resume();
+            }
+
+            audioSource = audioContext.createMediaElementSource(audioElement);
+            audioDestination = audioContext.createMediaStreamDestination();
+            audioSource.connect(audioDestination);
+            audioSource.connect(audioContext.destination);
+            audioTracks = audioDestination.stream.getAudioTracks();
+
+            if (audioTracks.length > 0) {
+                audioInitialized = true;
+            }
+        } catch (err) {
+            console.error('Audio setup failed:', err);
+            alert('Could not capture audio. The video will export without background music.');
+        }
+
+        let combinedStream;
+        try {
+            if (audioInitialized && audioTracks.length > 0) {
+                combinedStream = new MediaStream([videoTrack, ...audioTracks]);
+            } else {
+                combinedStream = new MediaStream([videoTrack]);
+            }
+        } catch (err) {
+            combinedStream = new MediaStream([videoTrack]);
+        }
+
+        let mimeType = '';
+        const preferredTypes = [
+            'video/mp4; codecs="avc1.640028,mp4a.40.2"',
+            'video/mp4; codecs="avc1.42E01E,mp4a.40.2"',
+            'video/webm; codecs="vp9,opus"',
+            'video/webm; codecs="vp8,opus"',
+            'video/webm',
+            'video/mp4'
+        ];
+
+        for (const type of preferredTypes) {
+            if (MediaRecorder.isTypeSupported(type)) {
+                mimeType = type;
+                break;
+            }
+        }
+
+        const options = { mimeType, videoBitsPerSecond: 5000000, audioBitsPerSecond: 192000 };
+        let recorder;
+        try {
+            recorder = new MediaRecorder(combinedStream, options);
+        } catch (err) {
+            recorder = new MediaRecorder(combinedStream);
+        }
+
+        const chunks = [];
+
+        recorder.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) {
+                chunks.push(e.data);
+            }
+        };
+
+        recorder.onstop = () => {
+            if (chunks.length === 0) {
+                alert('No video data was recorded. Please try again.');
+                cleanup();
+                return;
+            }
+
+            const blob = new Blob(chunks, { type: mimeType });
+            if (blob.size === 0) {
+                alert('The recorded video is empty. Please try again.');
+                cleanup();
+                return;
+            }
+
+            const url = URL.createObjectURL(blob);
+            const filename = code
+                ? `${eventText.action.toLowerCase()}-slideshow-${code}-${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`
+                : `${eventText.action.toLowerCase()}-slideshow-${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            setTimeout(() => URL.revokeObjectURL(url), 10000);
+            cleanup();
+        };
+
+        recorder.onerror = (e) => {
+            console.error('MediaRecorder error:', e.error);
+            alert('An error occurred during recording: ' + e.error.message);
+            cleanup();
+        };
+
+        function cleanup() {
+            if (combinedStream) {
+                combinedStream.getTracks().forEach(track => track.stop());
+            }
+            if (videoTrack) videoTrack.stop();
+            if (audioTracks && audioTracks.length > 0) {
+                audioTracks.forEach(track => track.stop());
+            }
+            if (audioContext) {
+                audioContext.close().catch(err => console.warn('Error closing AudioContext:', err));
+            }
+            if (audioElement) {
+                audioElement.pause();
+                audioElement.src = '';
+                audioElement.load();
+            }
+            setIsRecording(false);
+            setRecordingProgress(0);
+        }
+
+        try {
+            recorder.start(100);
+
+            if (audioElement && audioInitialized) {
+                try {
+                    await audioElement.play();
+                } catch (err) {
+                    console.warn('Could not play audio:', err);
+                }
+            }
+
+            await renderIntro(ctx, width, height);
+            setRecordingProgress(10);
+
+            for (let i = 0; i < slides.length; i++) {
+                await renderSlideForVideo(ctx, width, height, slides[i], i + 1, slides.length);
+                setRecordingProgress(10 + Math.round(((i + 1) / slides.length) * 80));
+            }
+
+            await renderOutro(ctx, width, height);
+            setRecordingProgress(95);
+
+            await new Promise(resolve => setTimeout(resolve, 1000 / FPS));
+            recorder.stop();
+
+            if (audioElement) {
+                audioElement.pause();
+                audioElement.currentTime = 0;
+            }
+
+            setRecordingProgress(100);
+
+        } catch (err) {
+            console.error('Rendering error:', err);
+            alert('An error occurred during rendering: ' + err.message);
+            recorder.stop();
+            cleanup();
+        }
+    }
+
     function shareToWhatsApp() {
         const currentSlide = slides[currentIndex];
         if (currentSlide && code) {
             const baseUrl = window.location.origin;
             const shareLink = `${baseUrl}/slideshow/${code}`;
-
-            const messageText = `✨ ${celebrantName} invites you to relive our beautiful moments together! ✨\n\n🎥 Watch the slideshow: ${shareLink}\n\n💝 Enjoy the memories!`;
+            const messageText = `✨ Join the ${eventText.shareMessage}! ✨\n\n🎥 Watch the slideshow: ${shareLink}\n\n💝 Enjoy the memories!`;
             const encodedMessage = encodeURIComponent(messageText);
-
             window.open(`https://wa.me/?text=${encodedMessage}`, '_blank');
         }
     }
 
-    // Helper for desktop carousel: get 5 slides (current + 2 left + 2 right, wrapped)
     function getVisibleSlides() {
         if (slides.length === 0) return []
         const indices = []
@@ -1224,7 +1186,7 @@ function Slideshow() {
             {/* Background gradient */}
             <div className="fixed inset-0" style={{ background: 'radial-gradient(ellipse at top, #1a1a2e 0%, #0a0a0a 50%, #000 100%)', zIndex: -1 }} />
 
-            {/* Floating Hearts */}
+            {/* Floating Elements Container */}
             <div className="hearts" id="heartsContainer"></div>
 
             {/* Back Button */}
@@ -1262,11 +1224,10 @@ function Slideshow() {
                         </svg>
                     )}
                 </button>
+                {/* Video Export Button */}
                 <button className="fab w-10 h-10 rounded-full bg-gray-800/80 backdrop-blur text-white flex items-center justify-center" onClick={exportVideo} disabled={isRecording} title="Export Video">
                     {isRecording ? (
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-5 h-5 animate-spin">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     ) : (
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-5 h-5">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -1280,7 +1241,7 @@ function Slideshow() {
                 </button>
             </div>
 
-            {/* Recording / Bulk Download Overlays */}
+            {/* Recording Overlay */}
             {isRecording && (
                 <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center">
                     <div className="text-center">
@@ -1294,6 +1255,7 @@ function Slideshow() {
                     </div>
                 </div>
             )}
+
             {isBulkDownloading && (
                 <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center">
                     <div className="text-center">
@@ -1310,7 +1272,7 @@ function Slideshow() {
 
             {/* Title Overlay */}
             <div className={`title-overlay ${showTitle ? 'show' : ''}`}>
-                <h1 className="romantic-font">Happy Birthday, {celebrantName}! 🎂</h1>
+                <h1 className="romantic-font">{eventText.title}, {celebrantName}! {eventText.emoji}</h1>
                 <p>With love from your friends & family 💕</p>
             </div>
 
@@ -1332,28 +1294,11 @@ function Slideshow() {
                                     <div
                                         key={index}
                                         onClick={() => setCurrentIndex(index)}
-                                        className={`
-                        transition-all duration-500 ease-out cursor-pointer
-                        ${isActive
-                                                ? 'z-10 scale-100 md:scale-110'
-                                                : 'scale-90 md:scale-75 blur-sm opacity-70 hover:opacity-100 hover:blur-none'
-                                            }
-                    `}
-                                        style={{
-                                            flex: '0 0 auto',
-                                            width: isActive ? 'min(65vw, 500px)' : 'min(25vw, 200px)',
-                                            transition: 'width 0.4s ease, transform 0.4s ease, filter 0.4s ease, opacity 0.4s ease'
-                                        }}
+                                        className={`transition-all duration-500 ease-out cursor-pointer ${isActive ? 'z-10 scale-100 md:scale-110' : 'scale-90 md:scale-75 blur-sm opacity-70 hover:opacity-100 hover:blur-none'}`}
+                                        style={{ flex: '0 0 auto', width: isActive ? 'min(65vw, 500px)' : 'min(25vw, 200px)', transition: 'width 0.4s ease, transform 0.4s ease, filter 0.4s ease, opacity 0.4s ease' }}
                                     >
-                                        <div className={`relative rounded-2xl overflow-hidden shadow-2xl ${isActive ? 'animate-gentle-pop' : ''}`}
-                                            key={popAnimationKey} /* forces re‑animation when index changes */
-                                        >
-                                            <img
-                                                src={slides[index].photo}
-                                                alt={slides[index].name}
-                                                className="w-full h-auto object-contain max-h-[70vh] transition-transform duration-700 hover:scale-105"
-                                                onError={(e) => e.target.src = 'data:image/svg+xml;...'}
-                                            />
+                                        <div className={`relative rounded-2xl overflow-hidden shadow-2xl ${isActive ? 'animate-gentle-pop' : ''}`} key={popAnimationKey}>
+                                            <img src={slides[index].photo} alt={slides[index].name} className="w-full h-auto object-contain max-h-[70vh] transition-transform duration-700 hover:scale-105" onError={(e) => e.target.src = 'data:image/svg+xml;...'} />
                                             {isActive && (
                                                 <div className="absolute bottom-0 left-0 right-0 bg-black/80 backdrop-blur-sm p-4 text-white text-center transition-all duration-300">
                                                     <h3 className="font-bold text-lg md:text-xl romantic-font drop-shadow-lg">{slides[index].name}</h3>
@@ -1364,8 +1309,6 @@ function Slideshow() {
                                     </div>
                                 ))}
                             </div>
-
-                            {/* Compact controls (same as before) */}
                             <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-30 bg-black/50 backdrop-blur-md rounded-full px-4 py-2 flex items-center gap-4 shadow-lg transition-all duration-300">
                                 <span className="text-white/80 text-xs font-mono">{currentIndex + 1}/{slides.length}</span>
                                 <div className="w-32 h-1 bg-gray-500/50 rounded-full overflow-hidden">
@@ -1385,54 +1328,36 @@ function Slideshow() {
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                                 </button>
                             </div>
-
-                            {/* Smaller FABs */}
-                            <div className="fab-container fixed top-5 right-5 z-50 flex gap-1 scale-75 origin-top-right opacity-80 hover:opacity-100 transition-all duration-300">
-                                {/* ... your existing FAB buttons ... */}
-                            </div>
                         </div>
                     ) : (
-                        /* MOBILE FULL‑SCREEN SLIDESHOW */
                         <div className="slideshow-container bg-rose-500">
                             {slides.map((slide, index) => (
                                 <div key={index} className={`slide ${index === currentIndex ? 'active' : ''}`}>
-                                    <img src={slide.photo} className="slide-image" alt={`Slide ${index + 1}`}
-                                        onError={(e) => e.target.src = 'data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%25%22 height=%22100%25%22%3E%3Cdefs%3E%3ClinearGradient id=%22g%22 x1=%220%25%22 y1=%220%25%22 x2=%22100%25%22 y2=%22100%25%22%3E%3Cstop offset=%220%25%22 stop-color=%22%23ec4899%22/%3E%3Cstop offset=%22100%25%22 stop-color=%22%23f43f5e%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill=%22url(%23g)%22 width=%22100%25%22 height=%22100%25%22/%3E%3Ctext fill=%22white%22 font-size=%2224%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22%3EImage Not Found%3C/text%3E%3C/svg%3E'}
-                                    />
+                                    <img src={slide.photo} className="slide-image" alt={`Slide ${index + 1}`} onError={(e) => e.target.src = 'data:image/svg+xml;...'} />
                                     <div className="slide-message bg-rose-500">
                                         <h3>{slide.name}</h3>
                                         <p>{slide.message}</p>
                                     </div>
                                 </div>
                             ))}
-                            <div className="photo-counter">
-                                {currentIndex + 1} / {slides.length}
-                            </div>
+                            <div className="photo-counter">{currentIndex + 1} / {slides.length}</div>
                             <div className="controls-wrapper">
                                 <div className="progress-container">
                                     <div className="progress-bar" style={{ width: `${progress}%` }}></div>
                                 </div>
                                 <div className="controls">
                                     <button className="control-btn" onClick={prevSlide}>
-                                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-5 h-5">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                                        </svg>
+                                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                                     </button>
                                     <button className="control-btn primary" onClick={togglePlay}>
                                         {isPlaying ? (
-                                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-5 h-5">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
+                                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                         ) : (
-                                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-5 h-5">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                                            </svg>
+                                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /></svg>
                                         )}
                                     </button>
                                     <button className="control-btn" onClick={nextSlide}>
-                                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-5 h-5">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                        </svg>
+                                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                                     </button>
                                 </div>
                             </div>
@@ -1442,14 +1367,14 @@ function Slideshow() {
             ) : (
                 <div className="absolute inset-0 flex items-center justify-center">
                     <div className="text-center px-4">
-                        <div className="text-6xl mb-4">🎉</div>
+                        <div className="text-6xl mb-4">{eventText.emoji}</div>
                         <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-rose-400 to-pink-600 mb-2 romantic-font">
-                            Happy {orderConfig?.event_type === 'anniversary' ? 'Anniversary' : orderConfig?.event_type === 'wedding' ? 'Wedding Celebration' : orderConfig?.event_type === 'party' ? 'Party' : 'Birthday'}, {celebrantName}! 🎂
+                            {eventText.title}, {celebrantName}! {eventText.emoji}
                         </h2>
                         <p className="text-gray-300 mt-2 max-w-md mx-auto">
                             The celebration is about to begin! Share your favorite memories to make this moment even more special.
                         </p>
-                        <Link to="/upload" className="inline-block mt-6 bg-gradient-to-r from-rose-500 to-pink-600 text-white px-8 py-3 rounded-full hover:from-rose-600 hover:to-pink-700 transition shadow-lg">
+                        <Link to={`/upload/${code}`} className="inline-block mt-6 bg-gradient-to-r from-rose-500 to-pink-600 text-white px-8 py-3 rounded-full hover:from-rose-600 hover:to-pink-700 transition shadow-lg">
                             Add Your Photos 📸
                         </Link>
                     </div>
@@ -1465,15 +1390,11 @@ function Slideshow() {
                         <img src={downloadImage} alt="Preview" className="download-preview w-full rounded-lg mb-4" />
                         <div className="download-buttons flex gap-3 justify-center">
                             <button className="download-btn primary bg-pink-600 px-4 py-2 rounded-full text-white flex items-center gap-2" onClick={downloadImageFile}>
-                                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                </svg>
+                                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                                 Download
                             </button>
                             <button className="download-btn secondary bg-gray-700 px-4 py-2 rounded-full text-white flex items-center gap-2" onClick={() => { shareToWhatsApp(); closeDownloadModal(); }}>
-                                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                                </svg>
+                                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
                                 Share
                             </button>
                         </div>
@@ -1481,7 +1402,6 @@ function Slideshow() {
                 </div>
             )}
 
-            {/* Keyboard controls */}
             <KeyboardControls onNext={nextSlide} onPrev={prevSlide} onTogglePlay={togglePlay} onToggleMusic={toggleMusic} onCloseModal={closeDownloadModal} />
         </div>
     )

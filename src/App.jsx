@@ -1,6 +1,6 @@
- import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom'
- import { useState, useRef, useEffect } from 'react'
- import { supabase, STORAGE_KEYS } from './supabase'
+import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom'
+import { useState, useRef, useEffect } from 'react'
+import { supabase, STORAGE_KEYS } from './supabase'
 import Home from './pages/Home'
 import Locked from './pages/Locked'
 import GiftPage from './pages/Gift'
@@ -18,21 +18,15 @@ import Dashboard from './pages/Dashboard'
 import Welcome from './pages/Welcome'
 import SelectPackage from './pages/SelectPackage'
 import PaymentDetails from './pages/PaymentDetails'
-import WeddingView from './pages/WeddingView'
-import AnniversaryView from './pages/AnniversaryView'
-import PartyView from './pages/PartyView'
-import HangoutView from './pages/HangoutView'
-import OtherEventView from './pages/OtherEventView'
 import EditWedding from './pages/EditWedding'
 import EditAnniversary from './pages/EditAnniversary'
 import EditParty from './pages/EditParty'
 import EditHangout from './pages/EditHangout'
 import EditOtherEvent from './pages/EditOtherEvent'
-import CreateWedding from './pages/CreateWedding'
-import CreateAnniversary from './pages/CreateAnniversary'
-import CreateParty from './pages/CreateParty'
-import CreateHangout from './pages/CreateHangout'
-import CreateOtherEvent from './pages/CreateOtherEvent'
+// NEW Unified Create and Edit Routes
+import CreateEvent from './pages/CreateEvent'
+import EditEvent from './pages/EditEvent'
+import EventView from './pages/EventView'
 
 function ResetPassword() {
     const [password, setPassword] = useState('')
@@ -142,10 +136,10 @@ function AuthCallback() {
                 const url = new URL(window.location.href)
                 const code = url.searchParams.get('code')
                 const hash = url.hash
-                
+
                 if (code) {
                     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
-                    
+
                     if (error) {
                         console.error('Auth callback error:', error)
                         setStatus('error')
@@ -166,10 +160,10 @@ function AuthCallback() {
                     setStatus('success')
                     return
                 }
-                
+
                 if (hash && hash.includes('access_token')) {
                     const { data: { session }, error } = await supabase.auth.getSession()
-                    
+
                     if (error) {
                         console.error('Auth callback error:', error)
                         setStatus('error')
@@ -218,63 +212,80 @@ function AuthCallback() {
     )
 }
 
- function App() {
-     return (
-         <Router future={{
-             v7_startTransition: true,
-             v7_relativeSplatPath: true
-         }}>
-             <Routes>
-                 <Route path="/" element={<Welcome />} />
-                 <Route path="/order" element={<Order />} />
-                 <Route path="/order-status" element={<OrderStatus />} />
-                 <Route path="/register" element={<Register />} />
-                 <Route path="/login" element={<Login />} />
-                 <Route path="/auth/callback" element={<AuthCallback />} />
-                 <Route path="/reset-password" element={<ResetPassword />} />
-                  <Route path="/select-package" element={<SelectPackage />} />
-                  <Route path="/payment-details" element={<PaymentDetails />} />
-                  <Route path="/dashboard" element={<Dashboard />} />
-                   <Route path="/birthday/:code" element={<Birthday />} />
-                   <Route path="/upload/:code" element={<Upload />} />
-                   <Route path="/slideshow/:code" element={<Slideshow />} />
-                   <Route path="/wedding/:id/slideshow/:code" element={<Slideshow />} />
-                   <Route path="/public/wedding/:id/slideshow/:code" element={<Slideshow />} />
-                  <Route path="/home" element={<Home />} />
-                  <Route path="/gift" element={<GiftPage />} />
-                    <Route path="/gift/:code" element={<GiftPage />} />
-                    <Route path="/claim/:giftCode" element={<ClaimGift />} />
-                  <Route path="/admin" element={<Admin />} />
-                  <Route path="/upload" element={<Upload />} />
-                  <Route path="/slideshow" element={<Slideshow />} />
-                  <Route path="/locked" element={<Locked />} />
-                  {/* Event Detail Views */}
-                  <Route path="/wedding/:id" element={<WeddingView />} />
-                  <Route path="/anniversary/:id" element={<AnniversaryView />} />
-                  <Route path="/party/:id" element={<PartyView />} />
-                  <Route path="/hangout/:id" element={<HangoutView />} />
-                  <Route path="/other-event/:id" element={<OtherEventView />} />
-                  {/* Public Views */}
-                  <Route path="/public/wedding/:id" element={<WeddingView />} />
-                  <Route path="/public/anniversary/:id" element={<AnniversaryView />} />
-                  <Route path="/public/party/:id" element={<PartyView />} />
-                  <Route path="/public/hangout/:id" element={<HangoutView />} />
-                  <Route path="/public/other-event/:id" element={<OtherEventView />} />
-                   {/* Edit Routes */}
-                   <Route path="/edit-wedding/:id" element={<EditWedding />} />
-                   <Route path="/edit-anniversary/:id" element={<EditAnniversary />} />
-                   <Route path="/edit-party/:id" element={<EditParty />} />
-                   <Route path="/edit-hangout/:id" element={<EditHangout />} />
-                   <Route path="/edit-other-event/:id" element={<EditOtherEvent />} />
-                   {/* Create Routes */}
-                   <Route path="/create-wedding" element={<CreateWedding />} />
-                   <Route path="/create-anniversary" element={<CreateAnniversary />} />
-                   <Route path="/create-party" element={<CreateParty />} />
-                   <Route path="/create-hangout" element={<CreateHangout />} />
-                   <Route path="/create-other-event" element={<CreateOtherEvent />} />
-              </Routes>
-         </Router>
-     )
- }
+function App() {
+    return (
+        <Router future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true
+        }}>
+            <Routes>
+                {/* Public Routes */}
+                <Route path="/" element={<Welcome />} />
+                <Route path="/register" element={<Register />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+
+                {/* Package & Payment */}
+                <Route path="/select-package" element={<SelectPackage />} />
+                <Route path="/payment-details" element={<PaymentDetails />} />
+
+                {/* Dashboard & User Area */}
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/home" element={<Home />} />
+                <Route path="/locked" element={<Locked />} />
+                <Route path="/admin" element={<Admin />} />
+
+                {/* Order Related */}
+                <Route path="/order" element={<Order />} />
+                <Route path="/order-status" element={<OrderStatus />} />
+                <Route path="/order-upload" element={<OrderUpload />} />
+
+                {/* UNIFIED CREATE & EDIT ROUTES */}
+                <Route path="/create-event" element={<CreateEvent />} />
+                <Route path="/edit-event/:id" element={<EditEvent />} />
+
+                {/* UNIVERSAL EVENT VIEW - SINGLE ROUTE (use :code parameter) */}
+                <Route path="/event/:code" element={<EventView />} />
+                <Route path="/public/event/:code" element={<EventView />} />
+
+                {/* LEGACY ROUTES - Keep for backward compatibility, they all use the same EventView */}
+                <Route path="/birthday/:code" element={<EventView />} />
+                <Route path="/wedding/:id" element={<EventView />} />
+                <Route path="/anniversary/:id" element={<EventView />} />
+                <Route path="/party/:id" element={<EventView />} />
+                <Route path="/hangout/:id" element={<EventView />} />
+                <Route path="/other-event/:id" element={<EventView />} />
+                <Route path="/public/wedding/:id" element={<EventView />} />
+                <Route path="/public/anniversary/:id" element={<EventView />} />
+                <Route path="/public/party/:id" element={<EventView />} />
+                <Route path="/public/hangout/:id" element={<EventView />} />
+                <Route path="/public/other-event/:id" element={<EventView />} />
+
+                {/* Slideshow Routes */}
+                <Route path="/slideshow/:code" element={<Slideshow />} />
+                <Route path="/slideshow" element={<Slideshow />} />
+                <Route path="/wedding/:id/slideshow/:code" element={<Slideshow />} />
+                <Route path="/public/wedding/:id/slideshow/:code" element={<Slideshow />} />
+
+                {/* Upload Routes */}
+                <Route path="/upload/:code" element={<Upload />} />
+                <Route path="/upload" element={<Upload />} />
+
+                {/* Gift Routes */}
+                <Route path="/gift" element={<GiftPage />} />
+                <Route path="/gift/:code" element={<GiftPage />} />
+                <Route path="/claim/:giftCode" element={<ClaimGift />} />
+
+                {/* Edit Routes - Can be replaced by /edit-event/:id later */}
+                <Route path="/edit-wedding/:id" element={<EditWedding />} />
+                <Route path="/edit-anniversary/:id" element={<EditAnniversary />} />
+                <Route path="/edit-party/:id" element={<EditParty />} />
+                <Route path="/edit-hangout/:id" element={<EditHangout />} />
+                <Route path="/edit-other-event/:id" element={<EditOtherEvent />} />
+            </Routes>
+        </Router>
+    )
+}
 
 export default App

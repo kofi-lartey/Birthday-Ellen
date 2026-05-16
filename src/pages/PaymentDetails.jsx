@@ -18,19 +18,20 @@ function PaymentDetails() {
     const [searchParams] = useSearchParams()
     const selectedPackageTier = searchParams.get('package') || 'basic'
     const price = searchParams.get('price') || '0'
+    const currency = searchParams.get('currency') || 'GHS'
     const selectedPackageId = Number.isInteger(Number(searchParams.get('packageId'))) ? Number(searchParams.get('packageId')) : null
     
     const [user, setUser] = useState(null)
     const [paymentMethod, setPaymentMethod] = useState('momo')
-    const [momoNumber, setMomoNumber] = useState('')
+    const [senderNumber, setSenderNumber] = useState('')
     const [transactionId, setTransactionId] = useState('')
     const [amountPaid, setAmountPaid] = useState(price)
-    const [paymentProof, setPaymentProof] = useState('')
     const [notes, setNotes] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [error, setError] = useState('')
     const [paymentReference, setPaymentReference] = useState('')
     const [showConfirmationCard, setShowConfirmationCard] = useState(false)
+    const [isPaid, setIsPaid] = useState(false)
 
     // Generate unique reference code on mount
     useEffect(() => {
@@ -47,16 +48,20 @@ function PaymentDetails() {
     }, [navigate, selectedPackageTier])
 
     function validateForm() {
+        if (!isPaid) {
+            setError('Please confirm that you have made the payment')
+            return false
+        }
+        if (!senderNumber.trim()) {
+            setError('Please enter your sender mobile money number')
+            return false
+        }
         if (!transactionId.trim()) {
-            setError('Please enter your transaction/reference ID from your payment confirmation')
+            setError('Please enter the transaction/reference ID from your payment confirmation')
             return false
         }
         if (!amountPaid || parseFloat(amountPaid) <= 0) {
             setError('Please enter a valid amount paid')
-            return false
-        }
-        if (paymentMethod === 'momo' && !momoNumber.trim()) {
-            setError('Please enter your Momo number')
             return false
         }
         return true
@@ -81,28 +86,26 @@ function PaymentDetails() {
                     to_package_tier: selectedPackageTier,
                     to_package_id: selectedPackageId,
                     amount_paid: parseFloat(amountPaid),
+                    currency: currency,
                     payment_method: paymentMethod,
-                    momo_number: paymentMethod === 'momo' ? momoNumber : null,
+                    sender_number: senderNumber,
                     transaction_id: transactionId,
                     payment_reference_code: paymentReference,
-                    payment_proof_url: paymentProof || null,
                     notes: notes,
                     status: 'pending'
                 }])
-                .select('id')  // Get the inserted ID
+                .select('id')
 
             if (insertError) {
                 console.error('Upgrade request error:', insertError)
-                console.log('Falling back to localStorage. Admin may not see this request until localStorage is synced.')
                 saveToLocalStorage()
                 setShowConfirmationCard(true)
                 return
             }
 
-            // Get the inserted request ID
             const requestId = insertedRequest?.[0]?.id
 
-            // Update user's pending status AND link to upgrade request
+            // Update user's pending status
             const updateData = {
                 package_pending: selectedPackageTier,
                 payment_status: 'pending',
@@ -111,7 +114,6 @@ function PaymentDetails() {
                 payment_reference_code: paymentReference
             }
             
-            // Only set pending_upgrade_id if we got a request ID
             if (requestId) {
                 updateData.pending_upgrade_id = requestId
             }
@@ -121,7 +123,7 @@ function PaymentDetails() {
                 .update(updateData)
                 .eq('id', user.id)
 
-            // Also add to localStorage's pending_payments for Admin "Payments" tab (legacy fallback)
+            // Save to localStorage
             const paymentRecord = {
                 id: requestId || Date.now(),
                 user_id: user.id,
@@ -130,10 +132,11 @@ function PaymentDetails() {
                 package_tier: selectedPackageTier,
                 package_name: PACKAGE_NAMES[selectedPackageTier],
                 amount: parseFloat(amountPaid),
+                currency: currency,
                 payment_method: paymentMethod,
+                sender_number: senderNumber,
                 payment_reference_code: paymentReference,
                 transaction_id: transactionId,
-                momo_number: momoNumber,
                 status: 'pending',
                 created_at: new Date().toISOString()
             }
@@ -171,11 +174,11 @@ function PaymentDetails() {
             to_package_tier: selectedPackageTier,
             to_package_id: selectedPackageId,
             amount_paid: parseFloat(amountPaid),
+            currency: currency,
             payment_method: paymentMethod,
-            momo_number: momoNumber,
+            sender_number: senderNumber,
             transaction_id: transactionId,
             payment_reference_code: paymentReference,
-            payment_proof_url: paymentProof,
             notes: notes,
             status: 'pending',
             created_at: new Date().toISOString(),
@@ -229,7 +232,7 @@ function PaymentDetails() {
                                         {PAYMENT_NUMBER}
                                     </div>
                                 </div>
-                                <p className="text-xs text-slate-500 mt-2">Mobile Money / Bank Transfer</p>
+                                <p className="text-xs text-slate-500 mt-2">Mobile Money (MTN / Vodafone / AirtelTigo)</p>
                             </div>
 
                             {/* Divider */}
@@ -257,6 +260,27 @@ function PaymentDetails() {
                                 </p>
                             </div>
 
+                            {/* Payment Details Summary */}
+                            <div className="bg-slate-50 rounded-xl p-5 space-y-3">
+                                <h3 className="font-semibold text-slate-700">Payment Summary</h3>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">Sender Number:</span>
+                                    <span className="font-mono font-semibold">{senderNumber}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">Amount Paid:</span>
+                                    <span className="font-bold text-green-600">{currency === 'GHS' ? '₵' : '$'}{amountPaid}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">Transaction ID:</span>
+                                    <span className="font-mono text-xs">{transactionId}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">Package:</span>
+                                    <span className="font-semibold">{PACKAGE_NAMES[selectedPackageTier]}</span>
+                                </div>
+                            </div>
+
                             {/* Divider */}
                             <div className="relative">
                                 <div className="absolute inset-0 flex items-center">
@@ -276,7 +300,7 @@ function PaymentDetails() {
                                         </svg>
                                     </div>
                                     <div className="flex-1">
-                                        <h3 className="font-bold text-amber-800 mb-1">Account Activation Time</h3>
+                                        <h3 className="font-bold text-amber-800 mb-1">No payment processed within 1 hour?</h3>
                                         <p className="text-sm text-amber-700 leading-relaxed">
                                             If your account is <strong>not activated within one hour</strong> after payment, please contact the administrator immediately.
                                         </p>
@@ -304,30 +328,17 @@ function PaymentDetails() {
                                     onClick={() => window.print()}
                                     className="flex-1 bg-white text-slate-700 border-2 border-slate-300 py-3 px-6 rounded-xl font-semibold hover:bg-slate-50 transition"
                                 >
-                                    Print / Save
+                                    Print / Save Receipt
                                 </button>
                             </div>
                         </div>
-                    </div>
-
-                    {/* Additional Info */}
-                    <div className="mt-8 text-center">
-                        <p className="text-sm text-slate-500">
-                            Amount Paid: <span className="font-bold text-slate-700">GHS {amountPaid}</span> • 
-                            Package: <span className="font-bold text-slate-700">{PACKAGE_NAMES[selectedPackageTier]}</span>
-                        </p>
-                        {paymentMethod === 'momo' && momoNumber && (
-                            <p className="text-sm text-slate-500 mt-1">
-                                Paid from: <span className="font-mono">{momoNumber}</span>
-                            </p>
-                        )}
                     </div>
                 </div>
             </div>
         )
     }
 
-    // Payment form (minimal)
+    // Payment form
     return (
         <div className="min-h-screen p-4 bg-gradient-to-br from-slate-50 to-gray-50">
             <div className="max-w-2xl mx-auto pt-8">
@@ -354,7 +365,7 @@ function PaymentDetails() {
                             Complete Your Upgrade
                         </h1>
                         <p className="text-slate-600">
-                            {PACKAGE_NAMES[selectedPackageTier]} Package • ${price}
+                            {PACKAGE_NAMES[selectedPackageTier]} Package • {currency === 'GHS' ? '₵' : '$'}{price}
                         </p>
                     </div>
 
@@ -366,7 +377,7 @@ function PaymentDetails() {
                                 <button
                                     type="button"
                                     onClick={() => setPaymentMethod('momo')}
-                                    className={`p-4 rounded-xl border-2 transition-all duration-200 ${paymentMethod === 'momo' ? 'border-slate-400 bg-slate-50 shadow-md' : 'border-slate-200 hover:border-slate-300'}`}
+                                    className={`p-4 rounded-xl border-2 transition-all duration-200 ${paymentMethod === 'momo' ? 'border-indigo-500 bg-indigo-50 shadow-md' : 'border-slate-200 hover:border-slate-300'}`}
                                 >
                                     <div className="text-2xl mb-2">📱</div>
                                     <div className="font-semibold text-slate-700">Mobile Money</div>
@@ -375,7 +386,7 @@ function PaymentDetails() {
                                 <button
                                     type="button"
                                     onClick={() => setPaymentMethod('bank')}
-                                    className={`p-4 rounded-xl border-2 transition-all duration-200 ${paymentMethod === 'bank' ? 'border-slate-400 bg-slate-50 shadow-md' : 'border-slate-200 hover:border-slate-300'}`}
+                                    className={`p-4 rounded-xl border-2 transition-all duration-200 ${paymentMethod === 'bank' ? 'border-indigo-500 bg-indigo-50 shadow-md' : 'border-slate-200 hover:border-slate-300'}`}
                                 >
                                     <div className="text-2xl mb-2">🏦</div>
                                     <div className="font-semibold text-slate-700">Bank Transfer</div>
@@ -384,81 +395,121 @@ function PaymentDetails() {
                             </div>
                         </div>
 
-                        {/* Momo Number */}
-                        {paymentMethod === 'momo' && (
-                            <div>
-                                <label className="block text-slate-700 font-semibold mb-2 text-sm">
-                                    Your Momo Number <span className="text-rose-600">*</span>
-                                </label>
-                                <input
-                                    type="tel"
-                                    value={momoNumber}
-                                    onChange={(e) => setMomoNumber(e.target.value)}
-                                    placeholder="024 XXX XXXX"
-                                    className="w-full p-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-slate-400 bg-white"
-                                    required
-                                />
-                            </div>
-                        )}
+                        {/* Sender Number */}
+                        <div>
+                            <label className="block text-slate-700 font-semibold mb-2 text-sm">
+                                Your Sender Number <span className="text-rose-600">*</span>
+                            </label>
+                            <input
+                                type="tel"
+                                value={senderNumber}
+                                onChange={(e) => setSenderNumber(e.target.value)}
+                                placeholder="024 XXX XXXX"
+                                className="w-full p-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-indigo-400 bg-white"
+                                required
+                            />
+                            <p className="text-xs text-slate-500 mt-1">The mobile money number you used to send payment</p>
+                        </div>
 
                         {/* Transaction ID */}
                         <div>
                             <label className="block text-slate-700 font-semibold mb-2 text-sm">
-                                Transaction ID <span className="text-rose-600">*</span>
+                                Transaction ID / Reference <span className="text-rose-600">*</span>
                             </label>
                             <input
                                 type="text"
                                 value={transactionId}
                                 onChange={(e) => setTransactionId(e.target.value)}
                                 placeholder="e.g., MTN-1234567890"
-                                className="w-full p-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-slate-400 bg-white"
+                                className="w-full p-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-indigo-400 bg-white"
                                 required
                             />
-                            <p className="text-xs text-slate-500 mt-1">From your payment confirmation</p>
+                            <p className="text-xs text-slate-500 mt-1">From your payment confirmation message</p>
                         </div>
 
                         {/* Pay To Number - prominent display */}
-                        <div className="bg-gradient-to-br from-slate-50 to-slate-100 border-2 border-slate-300 rounded-xl p-6">
+                        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-indigo-200 rounded-xl p-6">
                             <div className="text-center">
-                                <p className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
-                                    ⚡ Pay To (Destination Number)
+                                <p className="text-sm font-semibold text-indigo-700 uppercase tracking-wider mb-3">
+                                    ⚡ Send Payment To (Destination Number)
                                 </p>
                                 <div className="text-4xl md:text-5xl font-mono font-bold text-slate-800 tracking-wider mb-2">
                                     {PAYMENT_NUMBER}
                                 </div>
                                 <p className="text-sm text-slate-600">
-                                    Send exactly <span className="font-bold text-rose-600">GHS {amountPaid}</span> to this number
+                                    Send exactly <span className="font-bold text-indigo-600">{currency === 'GHS' ? '₵' : '$'}{amountPaid}</span> to this number
                                 </p>
                             </div>
                         </div>
 
-                         {/* Amount */}
-                         <div>
-                             <label className="block text-slate-700 font-semibold mb-2 text-sm">
-                                 Amount (GHS) <span className="text-rose-600">*</span>
-                             </label>
-                             <input
-                                 type="number"
-                                 value={amountPaid}
-                                 onChange={(e) => setAmountPaid(e.target.value)}
-                                 placeholder={price}
-                                 step="0.01"
-                                 className="w-full p-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-slate-400 bg-white text-lg text-center font-bold"
-                                 required
-                             />
-                         </div>
+                        {/* Amount */}
+                        <div>
+                            <label className="block text-slate-700 font-semibold mb-2 text-sm">
+                                Amount Paid ({currency === 'GHS' ? 'GHS' : 'USD'}) <span className="text-rose-600">*</span>
+                            </label>
+                            <input
+                                type="number"
+                                value={amountPaid}
+                                onChange={(e) => setAmountPaid(e.target.value)}
+                                placeholder={price}
+                                step="0.01"
+                                className="w-full p-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-indigo-400 bg-white text-lg text-center font-bold"
+                                required
+                            />
+                        </div>
 
-                         {error && (
-                             <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-center text-sm">
-                                 {error}
-                             </div>
-                         )}
+                        {/* Unique Reference Code Display */}
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                            <p className="text-sm text-slate-600 mb-2">
+                                <strong>Your Unique Payment Reference:</strong>
+                            </p>
+                            <div className="bg-slate-900 text-slate-50 py-3 px-6 rounded-lg text-center font-mono font-bold tracking-widest text-2xl text-emerald-400">
+                                {paymentReference}
+                            </div>
+                            <p className="text-xs text-slate-500 mt-2 text-center">
+                                Use this as reference when sending payment
+                            </p>
+                        </div>
+
+                        {/* Confirm Payment Checkbox */}
+                        <div className="flex items-start gap-3 p-4 bg-green-50 rounded-xl border border-green-200">
+                            <input
+                                type="checkbox"
+                                id="confirmPaid"
+                                checked={isPaid}
+                                onChange={(e) => setIsPaid(e.target.checked)}
+                                className="mt-1 w-5 h-5 accent-green-600"
+                            />
+                            <label htmlFor="confirmPaid" className="text-slate-700 text-sm leading-relaxed">
+                                I confirm that I have sent <strong>{currency === 'GHS' ? '₵' : '$'}{amountPaid}</strong> to <strong>{PAYMENT_NUMBER}</strong> using the reference code <strong className="font-mono">{paymentReference}</strong>
+                            </label>
+                        </div>
+
+                        {/* Notes (Optional) */}
+                        <div>
+                            <label className="block text-slate-700 font-semibold mb-2 text-sm">
+                                Additional Notes (Optional)
+                            </label>
+                            <textarea
+                                value={notes}
+                                onChange={(e) => setNotes(e.target.value)}
+                                rows="3"
+                                placeholder="Any additional information for the admin..."
+                                className="w-full p-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-indigo-400 bg-white"
+                            />
+                        </div>
+
+                        {error && (
+                            <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-center text-sm">
+                                {error}
+                            </div>
+                        )}
 
                         {/* Submit Button */}
                         <button
                             type="submit"
                             disabled={isSubmitting}
-                            className="w-full py-4 bg-slate-800 text-white font-bold rounded-xl shadow-lg hover:bg-slate-900 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl shadow-lg hover:from-indigo-700 hover:to-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {isSubmitting ? (
                                 <span className="flex items-center justify-center gap-2">
@@ -466,28 +517,12 @@ function PaymentDetails() {
                                     Processing...
                                 </span>
                             ) : (
-                                `Submit Payment Request`
-                            )
-                        }
+                                'Submit Payment Confirmation'
+                            )}
                         </button>
 
-                        {/* Reference Code Display */}
-                        {paymentReference && (
-                            <div className="mt-6 bg-slate-50 border border-slate-200 rounded-xl p-4">
-                                <p className="text-sm text-slate-600 mb-2">
-                                    <strong>Your Unique Payment Reference:</strong>
-                                </p>
-                                <div className="bg-slate-900 text-slate-50 py-3 px-6 rounded-lg text-center font-mono font-bold tracking-widest text-2xl text-emerald-400">
-                                    {paymentReference}
-                                </div>
-                                <p className="text-xs text-slate-500 mt-2 text-center">
-                                    Write this down—admin will use it to verify your payment
-                                </p>
-                            </div>
-                        )}
-
                         {/* Support Contact */}
-                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mt-6">
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                             <div className="flex items-start gap-3">
                                 <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
