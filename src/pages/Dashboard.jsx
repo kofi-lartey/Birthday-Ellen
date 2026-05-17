@@ -227,6 +227,9 @@ function Dashboard() {
     const [pageType, setPageType] = useState('birthday')
     const [paymentPending, setPaymentPending] = useState(false)
     const [pendingUpgrade, setPendingUpgrade] = useState(null)
+    const [shareNotification, setShareNotification] = useState({ show: false, message: '', type: '', eventId: null })
+    const [showShareModal, setShowShareModal] = useState(false)
+    const [shareOrder, setShareOrder] = useState(null)
 
     // Helper to check if premium features are unlocked
     const hasFeatureAccess = (tier) => {
@@ -260,6 +263,59 @@ function Dashboard() {
     const [currentEventType, setCurrentEventType] = useState('birthday')
     const [showShareLink, setShowShareLink] = useState(false)
     const [shareLinkCopied, setShareLinkCopied] = useState(false)
+
+    // WhatsApp share function
+    const shareToWhatsApp = (orderCode, recipientName, linkType = 'upload') => {
+        let url = ''
+        let message = ''
+
+        if (linkType === 'upload') {
+            url = `${window.location.origin}/upload/${orderCode}`
+            message = `🎉 *${recipientName}'s Celebration* 🎉\n\n📸 Share your photos and messages for ${recipientName}!\n\nClick here to upload: ${url}\n\n✨ Add your love and wishes to make this celebration special! ✨`
+        } else {
+            url = `${window.location.origin}/event/${orderCode}`
+            message = `🎉 *${recipientName}'s Celebration* 🎉\n\nJoin the celebration and see all the wonderful messages and photos!\n\nView the celebration page: ${url}\n\n💕 Let's make ${recipientName} feel special! 💕`
+        }
+
+        const encodedMessage = encodeURIComponent(message)
+        const whatsappUrl = `https://wa.me/?text=${encodedMessage}`
+        window.open(whatsappUrl, '_blank')
+    }
+
+    // Copy link function
+    async function copyLink(orderCode, linkType, recipientName) {
+        let url = ''
+        let message = ''
+
+        if (linkType === 'upload') {
+            url = `${window.location.origin}/upload/${orderCode}`
+            message = `📸 Upload link for "${recipientName}" copied! Share this link so others can upload photos and messages.`
+        } else {
+            url = `${window.location.origin}/event/${orderCode}`
+            message = `🎉 Event page link for "${recipientName}" copied!`
+        }
+
+        try {
+            await navigator.clipboard.writeText(url)
+            setShareNotification({
+                show: true,
+                message: message,
+                type: linkType,
+                eventId: orderCode
+            })
+            setTimeout(() => {
+                setShareNotification({ show: false, message: '', type: '', eventId: null })
+            }, 3000)
+        } catch (err) {
+            alert('Failed to copy link. Please copy manually: ' + url)
+        }
+    }
+
+    // Open share modal
+    function openShareModal(order) {
+        setShareOrder(order)
+        setShowShareModal(true)
+    }
 
     useEffect(() => {
         const currentUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER) || 'null')
@@ -360,7 +416,7 @@ function Dashboard() {
                     eventId: registry.event_id,
                     recipientName: registry.event_name,
                     eventDate: registry.event_date,
-                    code: registry.code,  // MAKE SURE THIS IS INCLUDED
+                    code: registry.code,
                     package: registry.package || 'free',
                     status: registry.status || 'active',
                     isPublic: registry.is_public || false,
@@ -447,8 +503,6 @@ function Dashboard() {
         }
         return code
     }
-
-    // In Dashboard.jsx, replace the createEventPage function with this:
 
     async function createEventPage() {
         if (!recipientName.trim() || !eventDate) {
@@ -883,7 +937,6 @@ function Dashboard() {
             )}
 
             {/* Header */}
-            {/* Header */}
             <div className={`fixed left-0 right-0 bg-white/80 backdrop-blur-md shadow-sm z-40 ${pendingUpgrade ? 'top-[72px] md:top-[72px]' : 'top-0'}`}>
                 <div className="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
                     <div className="flex items-center gap-3">
@@ -919,6 +972,16 @@ function Dashboard() {
                     </div>
                 </div>
             </div>
+
+            {/* Share Notification */}
+            {shareNotification.show && (
+                <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 animate-bounce">
+                    <div className="bg-green-500 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2">
+                        <span>✅</span>
+                        <span className="text-sm">{shareNotification.message}</span>
+                    </div>
+                </div>
+            )}
 
             <div className={`px-4 pb-8 max-w-4xl mx-auto ${pendingUpgrade ? 'pt-28' : 'pt-20'}`}>
                 {/* Welcome */}
@@ -988,51 +1051,67 @@ function Dashboard() {
                                             </span>
                                         </div>
                                     </div>
-                                    <div className="mt-4 flex gap-2 flex-wrap">
-                                        {/* View Page */}
-                                        <Link
-                                            to={`/event/${order.code}`}
-                                            className="text-[10px] sm:text-xs bg-rose-500 text-white px-2 sm:px-3 py-1.5 sm:py-2 rounded-full hover:bg-rose-600 transition"
-                                        >
-                                            👁️ View
-                                        </Link>
 
-                                        {/* Add Photos */}
-                                        <Link
-                                            to={`/upload/${order.code}`}
-                                            className="text-[10px] sm:text-xs bg-purple-500 text-white px-2 sm:px-3 py-1.5 sm:py-2 rounded-full hover:bg-purple-600 transition"
-                                        >
-                                            📷 Photos
-                                        </Link>
-
-                                        {/* Slideshow */}
-                                        <Link
-                                            to={`/slideshow/${order.code}`}
-                                            className="text-[10px] sm:text-xs bg-blue-500 text-white px-2 sm:px-3 py-1.5 sm:py-2 rounded-full hover:bg-blue-600 transition"
-                                        >
-                                            🎬 Slideshow
-                                        </Link>
-
-                                        {/* Edit Details */}
-                                        <Link
-                                            to={`/edit-event/${order.code || order.id}`}
-                                            className="text-[10px] sm:text-xs bg-amber-500 text-white px-2 sm:px-3 py-1.5 sm:py-2 rounded-full hover:bg-amber-600 transition"
-                                        >
-                                            ✏️ {order.hasDetails ? 'Edit' : 'Add'}
-                                        </Link>
-
-                                        {/* Send Gift */}
-                                        {order.code && (
-                                            <button
-                                                onClick={() => {
-                                                    setSelectedOrderForGift(order);
-                                                    setShowGiftOptions(true);
-                                                }}
-                                                className="text-[10px] sm:text-xs bg-yellow-500 text-white px-2 sm:px-3 py-1.5 sm:py-2 rounded-full hover:bg-yellow-600 transition"
+                                    {/* Action Buttons */}
+                                    <div className="mt-4 space-y-2">
+                                        {/* Row 1: View, Upload, Slideshow */}
+                                        <div className="flex gap-2">
+                                            <Link
+                                                to={`/event/${order.code}`}
+                                                className="flex-1 text-center text-[10px] sm:text-xs bg-rose-500 text-white px-2 sm:px-3 py-1.5 sm:py-2 rounded-full hover:bg-rose-600 transition"
                                             >
-                                                🎁 Gift
+                                                👁️ View
+                                            </Link>
+                                            <Link
+                                                to={`/upload/${order.code}`}
+                                                className="flex-1 text-center text-[10px] sm:text-xs bg-purple-500 text-white px-2 sm:px-3 py-1.5 sm:py-2 rounded-full hover:bg-purple-600 transition"
+                                            >
+                                                📷 Upload
+                                            </Link>
+                                            <Link
+                                                to={`/slideshow/${order.code}`}
+                                                className="flex-1 text-center text-[10px] sm:text-xs bg-blue-500 text-white px-2 sm:px-3 py-1.5 sm:py-2 rounded-full hover:bg-blue-600 transition"
+                                            >
+                                                🎬 Slideshow
+                                            </Link>
+                                        </div>
+
+                                        {/* Row 2: Share Buttons with WhatsApp */}
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => openShareModal(order)}
+                                                className="flex-1 text-center text-[10px] sm:text-xs bg-green-500 text-white px-2 sm:px-3 py-1.5 sm:py-2 rounded-full hover:bg-green-600 transition flex items-center justify-center gap-1"
+                                            >
+                                                <span>📤</span> Share
                                             </button>
-                                        )}
+                                            <button
+                                                onClick={() => shareToWhatsApp(order.code, order.recipientName, 'upload')}
+                                                className="flex-1 text-center text-[10px] sm:text-xs bg-[#25D366] text-white px-2 sm:px-3 py-1.5 sm:py-2 rounded-full hover:bg-[#20bd59] transition flex items-center justify-center gap-1"
+                                            >
+                                                <span>💚</span> WhatsApp
+                                            </button>
+                                        </div>
+
+                                        {/* Row 3: Edit & Gift */}
+                                        <div className="flex gap-2">
+                                            <Link
+                                                to={`/edit-event/${order.code || order.id}`}
+                                                className="flex-1 text-center text-[10px] sm:text-xs bg-amber-500 text-white px-2 sm:px-3 py-1.5 sm:py-2 rounded-full hover:bg-amber-600 transition"
+                                            >
+                                                ✏️ {order.hasDetails ? 'Edit' : 'Add Details'}
+                                            </Link>
+                                            {order.code && (
+                                                <button
+                                                    onClick={() => {
+                                                        setSelectedOrderForGift(order);
+                                                        setShowGiftOptions(true);
+                                                    }}
+                                                    className="flex-1 text-center text-[10px] sm:text-xs bg-yellow-500 text-white px-2 sm:px-3 py-1.5 sm:py-2 rounded-full hover:bg-yellow-600 transition"
+                                                >
+                                                    🎁 Gift
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             ))}
@@ -1041,481 +1120,86 @@ function Dashboard() {
                 </div>
             </div>
 
-            {/* Create Modal */}
-            {showCreateModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-3xl p-4 md:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-                        <h3 className="text-xl font-bold text-gray-700 mb-4">Create New Event Page</h3>
+            {/* Share Modal */}
+            {showShareModal && shareOrder && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+                    <div className="bg-white rounded-3xl p-6 max-w-md w-full">
+                        <div className="text-center mb-4">
+                            <div className="text-5xl mb-2">📤</div>
+                            <h3 className="text-xl font-bold text-gray-700">Share {shareOrder.recipientName}'s Celebration</h3>
+                            <p className="text-gray-500 text-sm mt-1">Choose how to share</p>
+                        </div>
 
                         <div className="space-y-3">
-                            {/* Page Type Selection */}
-                            <div>
-                                <label className="block text-gray-600 mb-1 font-semibold text-sm">Select Event Type</label>
-
-                                <div className="grid grid-cols-3 gap-2">
-                                    <button
-                                        onClick={() => setPageType('birthday')}
-                                        className={`p-2 rounded-lg border-2 transition text-center ${pageType === 'birthday'
-                                            ? 'border-rose-500 bg-rose-50'
-                                            : 'border-gray-200 hover:border-rose-300'
-                                            }`}
-                                    >
-                                        <div className="text-xl mb-1">🎂</div>
-                                        <div className="font-semibold text-gray-700 text-xs">Birthday</div>
-                                    </button>
-
-                                    {(user?.package_tier === 'basic' || user?.package_tier === 'premium' || user?.package_tier === 'enterprise') && hasFeatureAccess(user.package_tier) ? (
-                                        <button
-                                            onClick={() => setPageType('wedding')}
-                                            className={`p-2 rounded-lg border-2 transition text-center ${pageType === 'wedding'
-                                                ? 'border-rose-500 bg-rose-50'
-                                                : 'border-gray-200 hover:border-rose-300'
-                                                }`}
-                                        >
-                                            <div className="text-xl mb-1">💒</div>
-                                            <div className="font-semibold text-gray-700 text-xs">Wedding</div>
-                                        </button>
-                                    ) : (
-                                        <button
-                                            disabled
-                                            className="p-2 rounded-lg border-2 border-gray-100 bg-gray-50 opacity-60 text-center"
-                                        >
-                                            <div className="text-xl mb-1">💒</div>
-                                            <div className="font-semibold text-gray-400 text-xs">Wedding</div>
-                                        </button>
-                                    )}
-
-                                    {(user?.package_tier === 'premium' || user?.package_tier === 'enterprise') && hasFeatureAccess(user.package_tier) ? (
-                                        <button
-                                            onClick={() => setPageType('anniversary')}
-                                            className={`p-2 rounded-lg border-2 transition text-center ${pageType === 'anniversary'
-                                                ? 'border-rose-500 bg-rose-50'
-                                                : 'border-gray-200 hover:border-rose-300'
-                                                }`}
-                                        >
-                                            <div className="text-xl mb-1">💕</div>
-                                            <div className="font-semibold text-gray-700 text-xs">Anniversary</div>
-                                        </button>
-                                    ) : (
-                                        <button
-                                            disabled
-                                            className="p-2 rounded-lg border-2 border-gray-100 bg-gray-50 opacity-60 text-center"
-                                        >
-                                            <div className="text-xl mb-1">💕</div>
-                                            <div className="font-semibold text-gray-400 text-xs">Anniversary</div>
-                                        </button>
-                                    )}
-
-                                    {(user?.package_tier === 'premium' || user?.package_tier === 'enterprise') && hasFeatureAccess(user.package_tier) ? (
-                                        <button
-                                            onClick={() => setPageType('graduation')}
-                                            className={`p-2 rounded-lg border-2 transition text-center ${pageType === 'graduation'
-                                                ? 'border-rose-500 bg-rose-50'
-                                                : 'border-gray-200 hover:border-rose-300'
-                                                }`}
-                                        >
-                                            <div className="text-xl mb-1">🎓</div>
-                                            <div className="font-semibold text-gray-700 text-xs">Graduation</div>
-                                        </button>
-                                    ) : (
-                                        <button
-                                            disabled
-                                            className="p-2 rounded-lg border-2 border-gray-100 bg-gray-50 opacity-60 text-center"
-                                        >
-                                            <div className="text-xl mb-1">🎓</div>
-                                            <div className="font-semibold text-gray-400 text-xs">Graduation</div>
-                                        </button>
-                                    )}
-
-                                    {user?.package_tier === 'enterprise' && hasFeatureAccess(user.package_tier) ? (
-                                        <button
-                                            onClick={() => setPageType('custom')}
-                                            className={`p-2 rounded-lg border-2 transition text-center ${pageType === 'custom'
-                                                ? 'border-rose-500 bg-rose-50'
-                                                : 'border-gray-200 hover:border-rose-300'
-                                                }`}
-                                        >
-                                            <div className="text-xl mb-1">✨</div>
-                                            <div className="font-semibold text-gray-700 text-xs">Custom</div>
-                                        </button>
-                                    ) : (
-                                        <button
-                                            disabled
-                                            className="p-2 rounded-lg border-2 border-gray-100 bg-gray-50 opacity-60 text-center"
-                                        >
-                                            <div className="text-xl mb-1">✨</div>
-                                            <div className="font-semibold text-gray-400 text-xs">Custom</div>
-                                        </button>
-                                    )}
-                                </div>
-
-                                {user?.package_tier === 'free' && (
-                                    <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
-                                        <p className="text-xs text-blue-700">
-                                            <strong>Upgrade</strong> to unlock more event types!
-                                            <button
-                                                onClick={() => { setShowCreateModal(false); navigate('/select-package'); }}
-                                                className="underline font-semibold ml-1"
-                                            >
-                                                View Plans
-                                            </button>
-                                        </p>
-                                    </div>
-                                )}
-                                {user?.package_tier && user?.package_tier !== 'free' && !hasFeatureAccess(user.package_tier) && (
-                                    <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
-                                        <p className="text-xs text-yellow-700">
-                                            <strong>Payment pending:</strong> Features available after confirmation.
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                            <div>
-                                <label className="block text-gray-600 mb-1 text-sm">Event Name</label>
-                                <input
-                                    type="text"
-                                    value={recipientName}
-                                    onChange={(e) => setRecipientName(e.target.value)}
-                                    className="w-full p-2 border-2 border-rose-200 rounded-xl text-sm"
-                                    placeholder="e.g., Sarah, Mama..."
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-gray-600 mb-1 text-sm">Event Date</label>
-                                <input
-                                    type="date"
-                                    value={eventDate}
-                                    onChange={(e) => setEventDate(e.target.value)}
-                                    className="w-full p-2 border-2 border-rose-200 rounded-xl text-sm"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-gray-600 mb-1 text-sm">Package</label>
-                                <select
-                                    value={selectedPackage}
-                                    onChange={(e) => setSelectedPackage(e.target.value)}
-                                    className="w-full p-2 border-2 border-rose-200 rounded-xl text-sm"
-                                    disabled
-                                >
-                                    <option value={user?.package_tier || 'free'}>
-                                        {user?.package_name?.toUpperCase() || (user?.package_tier || 'Free').toUpperCase()} Plan
-                                    </option>
-                                </select>
-                                <p className="text-xs text-gray-500 mt-1">Tied to your account</p>
-                            </div>
-                        </div>
-
-                        <div className="flex gap-2 mt-4">
-                            <button
-                                onClick={createEventPage}
-                                className="flex-1 bg-rose-500 text-white py-2 px-4 rounded-xl font-semibold text-sm"
-                            >
-                                Create {pageType === 'birthday' ? 'Birthday' : pageType === 'wedding' ? 'Wedding' : pageType === 'anniversary' ? 'Anniversary' : pageType === 'graduation' ? 'Graduation' : 'Custom'} Page
-                            </button>
-                            <button
-                                onClick={() => setShowCreateModal(false)}
-                                className="px-4 bg-gray-200 text-gray-600 py-2 rounded-xl font-semibold text-sm"
-                            >
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Event Details Modal */}
-            {/* Details Modal */}
-            {showDetailsModal && selectedOrder && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto" onClick={() => setShowDetailsModal(false)}>
-                    <div className="bg-white rounded-3xl p-6 max-w-2xl w-full my-8 relative" onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => setShowDetailsModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-2xl">✕</button>
-
-                        <h3 className="text-xl font-bold text-gray-700 mb-2">
-                            {getEventDisplay(currentEventType)?.celebrationName || currentEventType} Details
-                        </h3>
-                        <p className="text-sm text-gray-500 mb-4">for {selectedOrder.recipientName} ({user?.package_tier?.toUpperCase() || 'FREE'} package)</p>
-
-                        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-                            {currentEventType === 'birthday' ? (
-                                // ACTUAL BIRTHDAY FORM FIELDS - NOT PLACEHOLDER TEXT
-                                <>
-                                    <div>
-                                        <label className="block text-gray-600 mb-2">Background Image</label>
-                                        <input
-                                            type="file"
-                                            accept="image/*"
-                                            onChange={handleBackgroundImageUpload}
-                                            className="w-full p-2 border-2 border-rose-200 rounded-xl text-sm"
-                                        />
-                                        <p className="text-xs text-gray-500 mt-1">or enter URL below</p>
-                                        <input
-                                            type="url"
-                                            value={birthdayDetails.backgroundImage || ''}
-                                            onChange={(e) => setBirthdayDetails({ ...birthdayDetails, backgroundImage: e.target.value })}
-                                            className="w-full mt-2 p-2 border-2 border-rose-200 rounded-xl text-sm"
-                                            placeholder="https://example.com/background.jpg"
-                                        />
-                                        {birthdayDetails.backgroundImage && (
-                                            <img src={birthdayDetails.backgroundImage} alt="Background" className="mt-2 w-full h-32 object-cover rounded-xl" />
-                                        )}
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-gray-600 mb-2">Heart Message</label>
-                                        <input
-                                            type="text"
-                                            value={birthdayDetails.heartMessage || ''}
-                                            onChange={(e) => setBirthdayDetails({ ...birthdayDetails, heartMessage: e.target.value })}
-                                            className="w-full p-3 border-2 border-rose-200 rounded-xl text-sm"
-                                            placeholder="My heart belongs to you"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-gray-600 mb-2">Nickname</label>
-                                        <input
-                                            type="text"
-                                            value={birthdayDetails.nickname || ''}
-                                            onChange={(e) => setBirthdayDetails({ ...birthdayDetails, nickname: e.target.value })}
-                                            className="w-full p-3 border-2 border-rose-200 rounded-xl text-sm"
-                                            placeholder="e.g., Babe, Love, My Queen..."
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-gray-600 mb-2">Date of Birth (for countdown)</label>
-                                        <input
-                                            type="date"
-                                            value={birthdayDetails.dateOfBirth || ''}
-                                            onChange={(e) => setBirthdayDetails({ ...birthdayDetails, dateOfBirth: e.target.value })}
-                                            className="w-full p-3 border-2 border-rose-200 rounded-xl text-sm"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-gray-600 mb-2">Letter to the Birthday Person</label>
-                                        <textarea
-                                            value={birthdayDetails.letter || ''}
-                                            onChange={(e) => setBirthdayDetails({ ...birthdayDetails, letter: e.target.value })}
-                                            className="w-full p-3 border-2 border-rose-200 rounded-xl text-sm"
-                                            rows={5}
-                                            placeholder="Write a heartfelt letter..."
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-gray-600 mb-2">Background Music</label>
-                                        <input
-                                            type="file"
-                                            accept="audio/*"
-                                            onChange={handleAudioUpload}
-                                            className="w-full p-2 border-2 border-rose-200 rounded-xl text-sm"
-                                        />
-                                        <p className="text-xs text-gray-500 mt-1">or enter URL below</p>
-                                        <input
-                                            type="url"
-                                            value={birthdayDetails.audioUrl || ''}
-                                            onChange={(e) => setBirthdayDetails({ ...birthdayDetails, audioUrl: e.target.value })}
-                                            className="w-full mt-2 p-2 border-2 border-rose-200 rounded-xl text-sm"
-                                            placeholder="https://example.com/song.mp3"
-                                        />
-                                        {birthdayDetails.audioUrl && (
-                                            <audio src={birthdayDetails.audioUrl} controls className="mt-2 w-full" />
-                                        )}
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-gray-600 mb-2">
-                                            Photo Gallery ({Array.isArray(birthdayDetails.photos) ? birthdayDetails.photos.length : 0}/{getMaxPhotos(selectedOrder.package)})
-                                        </label>
-                                        <input
-                                            type="file"
-                                            accept="image/*"
-                                            multiple
-                                            onChange={handlePhotoUpload}
-                                            className="w-full p-2 border-2 border-rose-200 rounded-xl text-sm"
-                                        />
-                                        <div className="grid grid-cols-3 gap-2 mt-3">
-                                            {Array.isArray(birthdayDetails.photos) && birthdayDetails.photos.map((photo, idx) => (
-                                                <div key={idx} className="relative">
-                                                    <img src={photo.url} alt={`Photo ${idx + 1}`} className="w-full h-24 object-cover rounded-lg" />
-                                                    <button
-                                                        onClick={() => removePhoto(idx)}
-                                                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs hover:bg-red-600"
-                                                    >
-                                                        ×
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </>
-                            ) : (
-                                // For other event types (wedding, anniversary, party, hangout, other)
-                                (() => {
-                                    const schema = getEventSchema(currentEventType)
-                                    return schema.detailFields?.map(field => {
-                                        if (field.type === 'hidden') return null
-
-                                        // Handle different field types
-                                        if (field.type === 'checkbox') {
-                                            return (
-                                                <div key={field.name} className="flex items-start gap-3 p-3 border-2 border-rose-200 rounded-xl">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={birthdayDetails[field.name] || false}
-                                                        onChange={(e) => setBirthdayDetails(prev => ({ ...prev, [field.name]: e.target.checked }))}
-                                                        className="mt-1 w-5 h-5 accent-rose-500"
-                                                    />
-                                                    <div>
-                                                        <label className="text-gray-700 font-medium">{field.label}</label>
-                                                        {field.helpText && <p className="text-xs text-gray-500">{field.helpText}</p>}
-                                                    </div>
-                                                </div>
-                                            )
-                                        }
-
-                                        if (field.type === 'select') {
-                                            return (
-                                                <div key={field.name}>
-                                                    <label className="block text-gray-600 mb-2">{field.label}</label>
-                                                    <select
-                                                        value={birthdayDetails[field.name] || ''}
-                                                        onChange={(e) => setBirthdayDetails(prev => ({ ...prev, [field.name]: e.target.value }))}
-                                                        className="w-full p-3 border-2 border-rose-200 rounded-xl text-sm"
-                                                    >
-                                                        <option value="">{field.placeholder || 'Select...'}</option>
-                                                        {field.options?.map(opt => (
-                                                            <option key={opt} value={opt}>{opt}</option>
-                                                        ))}
-                                                    </select>
-                                                    {field.helpText && <p className="text-xs text-gray-500 mt-1">{field.helpText}</p>}
-                                                </div>
-                                            )
-                                        }
-
-                                        if (field.type === 'textarea') {
-                                            return (
-                                                <div key={field.name}>
-                                                    <label className="block text-gray-600 mb-2">{field.label} {field.required && <span className="text-red-500">*</span>}</label>
-                                                    <textarea
-                                                        value={birthdayDetails[field.name] || ''}
-                                                        onChange={(e) => setBirthdayDetails(prev => ({ ...prev, [field.name]: e.target.value }))}
-                                                        className="w-full p-3 border-2 border-rose-200 rounded-xl text-sm"
-                                                        rows={field.rows || 4}
-                                                        placeholder={field.placeholder}
-                                                    />
-                                                    {field.helpText && <p className="text-xs text-gray-500 mt-1">{field.helpText}</p>}
-                                                </div>
-                                            )
-                                        }
-
-                                        if (field.type === 'file-image' || field.type === 'file-audio') {
-                                            const isAudio = field.type === 'file-audio'
-                                            return (
-                                                <div key={field.name}>
-                                                    <label className="block text-gray-600 mb-2">{field.label}</label>
-                                                    <input
-                                                        type="file"
-                                                        accept={field.accept}
-                                                        onChange={async (e) => {
-                                                            const file = e.target.files[0]
-                                                            if (!file) return
-                                                            const formData = new FormData()
-                                                            formData.append('file', file)
-                                                            formData.append('upload_preset', 'ml_default')
-                                                            if (isAudio) formData.append('resource_type', 'video')
-                                                            try {
-                                                                const res = await fetch(`https://api.cloudinary.com/v1_1/djjgkezui/${isAudio ? 'video' : 'image'}/upload`, {
-                                                                    method: 'POST',
-                                                                    body: formData
-                                                                })
-                                                                const data = await res.json()
-                                                                if (data.secure_url) {
-                                                                    setBirthdayDetails(prev => ({ ...prev, [field.name]: data.secure_url }))
-                                                                }
-                                                            } catch (err) {
-                                                                console.error('Upload error:', err)
-                                                            }
-                                                        }}
-                                                        className="w-full p-2 border-2 border-rose-200 rounded-xl text-sm"
-                                                    />
-                                                    <p className="text-xs text-gray-500 text-center">or enter URL below</p>
-                                                    <input
-                                                        type="url"
-                                                        value={birthdayDetails[field.name] || ''}
-                                                        onChange={(e) => setBirthdayDetails(prev => ({ ...prev, [field.name]: e.target.value }))}
-                                                        className="w-full mt-2 p-2 border-2 border-rose-200 rounded-xl text-sm"
-                                                        placeholder={field.placeholder}
-                                                    />
-                                                    {field.helpText && <p className="text-xs text-gray-500 mt-1">{field.helpText}</p>}
-                                                </div>
-                                            )
-                                        }
-
-                                        // Default text/number/date input
-                                        return (
-                                            <div key={field.name}>
-                                                <label className="block text-gray-600 mb-2">{field.label} {field.required && <span className="text-red-500">*</span>}</label>
-                                                <input
-                                                    type={field.type || 'text'}
-                                                    value={birthdayDetails[field.name] || ''}
-                                                    onChange={(e) => setBirthdayDetails(prev => ({ ...prev, [field.name]: e.target.value }))}
-                                                    className="w-full p-3 border-2 border-rose-200 rounded-xl text-sm"
-                                                    placeholder={field.placeholder}
-                                                />
-                                                {field.helpText && <p className="text-xs text-gray-500 mt-1">{field.helpText}</p>}
-                                            </div>
-                                        )
-                                    })
-                                })()
-                            )}
-                        </div>
-
-                        <div className="flex gap-3 mt-6">
-                            <button onClick={saveEventDetails} className="flex-1 bg-rose-500 text-white py-3 rounded-xl font-semibold hover:bg-rose-600 transition">
-                                Save Details
-                            </button>
-                            {currentEventType === 'birthday' && selectedOrder.code && (
-                                <button onClick={() => setShowShareLink(true)} className="px-6 bg-green-500 text-white py-3 rounded-xl font-semibold hover:bg-green-600 transition">
-                                    🔗 Share Link
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Share Link Modal */}
-            {showShareLink && selectedOrder && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-                    <div className="bg-white rounded-3xl p-4 md:p-6 max-w-md w-full">
-                        <h4 className="font-bold text-green-700 mb-2 text-lg">🎉 Share Your Page</h4>
-                        <p className="text-sm text-gray-600 mb-3">
-                            Share this link with friends and family to let them see {selectedOrder.recipientName}'s birthday page!
-                        </p>
-                        <div className="flex gap-2">
-                            <input
-                                type="text"
-                                readOnly
-                                value={`${window.location.origin}/birthday/${selectedOrder.code}`}
-                                className="flex-1 p-2 border-2 border-green-200 rounded-xl text-sm bg-white"
-                            />
+                            {/* WhatsApp - Upload Link */}
                             <button
                                 onClick={() => {
-                                    navigator.clipboard.writeText(`${window.location.origin}/birthday/${selectedOrder.code}`)
-                                    setShareLinkCopied(true)
-                                    setTimeout(() => setShareLinkCopied(false), 3000)
+                                    shareToWhatsApp(shareOrder.code, shareOrder.recipientName, 'upload')
+                                    setShowShareModal(false)
                                 }}
-                                className="bg-green-500 text-white px-4 py-2 rounded-xl text-sm"
+                                className="w-full bg-[#25D366] text-white rounded-xl p-4 hover:bg-[#20bd59] transition flex items-center gap-4"
                             >
-                                {shareLinkCopied ? '✓ Copied!' : 'Copy'}
+                                <div className="text-3xl">💚</div>
+                                <div className="flex-1 text-left">
+                                    <div className="font-bold">Share Upload Link on WhatsApp</div>
+                                    <div className="text-xs opacity-90">Let friends upload photos & messages</div>
+                                </div>
+                                <div>→</div>
+                            </button>
+
+                            {/* WhatsApp - Event Link */}
+                            <button
+                                onClick={() => {
+                                    shareToWhatsApp(shareOrder.code, shareOrder.recipientName, 'event')
+                                    setShowShareModal(false)
+                                }}
+                                className="w-full bg-[#25D366] text-white rounded-xl p-4 hover:bg-[#20bd59] transition flex items-center gap-4"
+                            >
+                                <div className="text-3xl">🎉</div>
+                                <div className="flex-1 text-left">
+                                    <div className="font-bold">Share Event Page on WhatsApp</div>
+                                    <div className="text-xs opacity-90">Share the celebration slideshow</div>
+                                </div>
+                                <div>→</div>
+                            </button>
+
+                            {/* Copy Upload Link */}
+                            <button
+                                onClick={() => {
+                                    copyLink(shareOrder.code, 'upload', shareOrder.recipientName)
+                                    setShowShareModal(false)
+                                }}
+                                className="w-full bg-purple-500 text-white rounded-xl p-4 hover:bg-purple-600 transition flex items-center gap-4"
+                            >
+                                <div className="text-3xl">📋</div>
+                                <div className="flex-1 text-left">
+                                    <div className="font-bold">Copy Upload Link</div>
+                                    <div className="text-xs opacity-90">Share anywhere</div>
+                                </div>
+                                <div>→</div>
+                            </button>
+
+                            {/* Copy Event Link */}
+                            <button
+                                onClick={() => {
+                                    copyLink(shareOrder.code, 'event', shareOrder.recipientName)
+                                    setShowShareModal(false)
+                                }}
+                                className="w-full bg-teal-500 text-white rounded-xl p-4 hover:bg-teal-600 transition flex items-center gap-4"
+                            >
+                                <div className="text-3xl">📋</div>
+                                <div className="flex-1 text-left">
+                                    <div className="font-bold">Copy Event Link</div>
+                                    <div className="text-xs opacity-90">Share anywhere</div>
+                                </div>
+                                <div>→</div>
                             </button>
                         </div>
-                        <div className="mt-4 text-center">
+
+                        <div className="mt-6 text-center">
                             <button
-                                onClick={() => setShowShareLink(false)}
-                                className="bg-gray-200 text-gray-600 px-4 py-2 rounded-xl font-semibold"
+                                onClick={() => setShowShareModal(false)}
+                                className="bg-gray-100 text-gray-600 px-6 py-2 rounded-xl font-semibold hover:bg-gray-200 transition"
                             >
                                 Close
                             </button>

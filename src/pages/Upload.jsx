@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { supabase, cloudinaryConfig, STORAGE_KEYS } from '../supabase'
 
 function Upload() {
     const navigate = useNavigate()
     const { code } = useParams() // Get event code from URL
     const [uploadedPhotos, setUploadedPhotos] = useState([])
-    const [messages, setMessages] = useState([])
     const [senderName, setSenderName] = useState('')
     const [selectedPhoto, setSelectedPhoto] = useState('')
     const [messageText, setMessageText] = useState('')
@@ -20,29 +19,39 @@ function Upload() {
     const [rememberName, setRememberName] = useState(true)
     const [currentUser, setCurrentUser] = useState(null)
     const [isLoading, setIsLoading] = useState(false)
+    const [eventExists, setEventExists] = useState(true)
+    const [sessionId, setSessionId] = useState('')
 
     const cloudinaryRef = useRef()
     const widgetRef = useRef()
-    const uploadedUrlsSet = useRef(new Set()) // Track uploaded URLs to prevent duplicates
+    const uploadedUrlsSet = useRef(new Set())
+    const uploadingUrlsRef = useRef(new Set())
 
-    // Load saved user name from localStorage on mount
+    // Generate or get session ID for guest users
     useEffect(() => {
-        // Load current user from localStorage
+        // Generate a unique session ID for this user/browser
+        let storedSessionId = sessionStorage.getItem('upload_session_id')
+        if (!storedSessionId) {
+            storedSessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
+            sessionStorage.setItem('upload_session_id', storedSessionId)
+        }
+        setSessionId(storedSessionId)
+
+        // Load current user from localStorage (for dashboard users)
         const user = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER) || 'null')
         if (user) {
             setCurrentUser(user)
-            // If user is logged in, use their name as default
             if (user.name) {
                 setSenderName(user.name)
             }
         }
-        
+
         // Load saved guest name from localStorage
         const savedName = localStorage.getItem('guest_sender_name')
         if (savedName && !user?.name) {
             setSenderName(savedName)
         }
-        
+
         // Load remember preference
         const savedPreference = localStorage.getItem('remember_sender_name')
         if (savedPreference !== null) {
@@ -51,17 +60,10 @@ function Upload() {
     }, [])
 
     useEffect(() => {
-        // If there's a code in URL, load photos/messages for that specific event
+        // If there's a code in URL, verify the event exists
         if (code) {
             setOrderCode(code)
-            loadEventData(code)
-        } else {
-            // Load from general localStorage (for dashboard uploads)
-            const photos = JSON.parse(localStorage.getItem(STORAGE_KEYS.PHOTOS) || '[]')
-            setUploadedPhotos(photos)
-
-            const msgs = JSON.parse(localStorage.getItem(STORAGE_KEYS.MESSAGES) || '[]')
-            setMessages(msgs)
+            verifyEventAndLoadUserData(code)
         }
 
         // Load Cloudinary widget script
@@ -77,24 +79,26 @@ function Upload() {
         }
     }, [code])
 
-    async function loadEventData(eventCode) {
+    async function verifyEventAndLoadUserData(eventCode) {
         try {
             setIsLoading(true)
-            // Fetch event from registry using code
+            // Check if event exists
             const { data: event, error } = await supabase
                 .from('event_registry')
                 .select('*')
                 .eq('code', eventCode)
                 .single()
 
-            if (error) {
-                console.error('Error loading event:', error)
+            if (error || !event) {
+                console.error('Event not found:', error)
+                setEventExists(false)
                 return
             }
 
+            setEventExists(true)
             setEventType(event.event_type)
             setEventName(event.event_name)
-            
+
             // Get package to determine photo limit
             const packageLimits = {
                 free: 5,
@@ -104,68 +108,46 @@ function Upload() {
             }
             setMaxPhotos(packageLimits[event.package] || 5)
 
-            await loadPhotosFromSupabase()
+            // Load ONLY the current user's uploaded photos (by session ID)
+            await loadCurrentUserPhotos(eventCode)
 
         } catch (err) {
             console.error('Error loading event data:', err)
+            setEventExists(false)
         } finally {
             setIsLoading(false)
         }
     }
 
-    async function loadPhotosFromSupabase() {
+    async function loadCurrentUserPhotos(eventCode) {
         try {
+            if (!sessionId) return
+
             const { data: photosData, error: photosError } = await supabase
                 .from('photos')
                 .select('*')
-                .eq('order_code', orderCode)
+                .eq('order_code', eventCode)
+                .eq('tag', 'gallery')
+                .eq('session_id', sessionId) // Only load current session's photos
                 .order('created_at', { ascending: false })
 
-            console.log('All photos loaded from Supabase:', photosData?.length || 0)
+            console.log('Your photos loaded:', photosData?.length || 0)
 
             if (!photosError && photosData) {
-                // Reset the URL set to avoid duplicates
                 uploadedUrlsSet.current.clear()
-                
-                // Separate gallery photos (uploaded photos)
-                const galleryPhotos = photosData.filter(p => p.tag === 'gallery')
-                console.log('Gallery photos found:', galleryPhotos.length)
-                
-                const photoObjects = galleryPhotos.map(p => {
-                    // Add URL to set to track
-                    uploadedUrlsSet.current.add(p.image_url)
-                    return { 
-                        url: p.image_url, 
-                        tag: 'gallery',
-                        uploadedAt: p.created_at 
-                    }
-                })
-                setUploadedPhotos(photoObjects)
-                
-                // Update localStorage
-                if (orderCode) {
-                    localStorage.setItem(`${STORAGE_KEYS.PHOTOS}_${orderCode}`, JSON.stringify(photoObjects))
-                }
-                
-                // Slideshow messages (messages with photos)
-                const slideshowMessages = photosData.filter(p => p.tag === 'slideshow')
-                console.log('Slideshow messages found:', slideshowMessages.length)
-                
-                const messagesList = slideshowMessages.map(p => ({
-                    name: p.name || 'Someone Special',
-                    photo: p.image_url,
-                    message: p.message || 'Happy Celebration!',
-                    date: p.created_at
+
+                const photoObjects = photosData.map(p => ({
+                    url: p.image_url,
+                    tag: 'gallery',
+                    uploadedAt: p.created_at,
+                    id: p.id
                 }))
-                setMessages(messagesList)
-                
-                // Update localStorage for messages
-                if (orderCode) {
-                    localStorage.setItem(`${STORAGE_KEYS.MESSAGES}_${orderCode}`, JSON.stringify(messagesList))
-                }
+
+                photoObjects.forEach(p => uploadedUrlsSet.current.add(p.url))
+                setUploadedPhotos(photoObjects)
             }
         } catch (err) {
-            console.error('Error loading photos from Supabase:', err)
+            console.error('Error loading your photos:', err)
         }
     }
 
@@ -173,8 +155,8 @@ function Upload() {
         if (orderCode) {
             const link = `${window.location.origin}/upload/${orderCode}`
             setShareLink(link)
-            navigator.clipboard.writeText(link)
-            showNotification('Link copied to clipboard! 🔗')
+            await navigator.clipboard.writeText(link)
+            showNotification('Link copied! Share this link so others can upload their own photos 🎉')
         } else {
             showNotification('No event found. Please create an event first.')
         }
@@ -189,7 +171,7 @@ function Upload() {
                 uploadPreset: cloudinaryConfig.uploadPreset,
                 sources: ['local', 'camera'],
                 maxFileSize: 5000000,
-                maxFiles: 10,
+                maxFiles: maxPhotos - uploadedPhotos.length,
                 clientAllowedFormats: ['jpg', 'jpeg', 'png', 'gif'],
                 styles: {
                     palette: {
@@ -215,20 +197,20 @@ function Upload() {
     function handleUpload(error, result) {
         if (!error && result && result.event === "success") {
             const imageUrl = result.info.secure_url
-            // Check if URL already added to prevent duplicates
-            if (!uploadedUrlsSet.current.has(imageUrl)) {
-                uploadedUrlsSet.current.add(imageUrl)
-                addPhoto(imageUrl)
-            }
+            setTimeout(() => {
+                if (!uploadedUrlsSet.current.has(imageUrl) && !uploadingUrlsRef.current.has(imageUrl)) {
+                    uploadedUrlsSet.current.add(imageUrl)
+                    addPhoto(imageUrl)
+                }
+            }, 100)
         }
 
         if (result && result.event === "batch-complete") {
             setIsUploading(false)
-            showNotification(`${result.info.files.length} photos uploaded! 📸`)
-            // Reload photos from Supabase to ensure sync
+            showNotification(`${result.info.files.length} photo(s) uploaded! 📸`)
             setTimeout(() => {
-                loadPhotosFromSupabase()
-            }, 500)
+                loadCurrentUserPhotos(orderCode)
+            }, 1000)
         }
 
         if (error) {
@@ -238,6 +220,10 @@ function Upload() {
     }
 
     function openUploadWidget() {
+        if (uploadedPhotos.length >= maxPhotos) {
+            showNotification(`You've reached the photo limit (${maxPhotos}) for this event!`)
+            return
+        }
         setIsUploading(true)
         if (widgetRef.current) {
             widgetRef.current.open()
@@ -250,6 +236,12 @@ function Upload() {
         const files = e.target.files
         if (!files || files.length === 0) return
 
+        if (uploadedPhotos.length + files.length > maxPhotos) {
+            showNotification(`You can only upload ${maxPhotos - uploadedPhotos.length} more photo(s)`)
+            setIsUploading(false)
+            return
+        }
+
         console.log(`Selected ${files.length} files to upload`)
         setIsUploading(true)
 
@@ -257,6 +249,10 @@ function Upload() {
         Array.from(files).forEach(file => {
             if (file.size > 5 * 1024 * 1024) {
                 alert(`File ${file.name} is too large! Max 5MB`)
+                uploadedCount++
+                if (uploadedCount === files.length) {
+                    setIsUploading(false)
+                }
                 return
             }
 
@@ -272,24 +268,28 @@ function Upload() {
                 .then(data => {
                     if (data.secure_url) {
                         const imageUrl = data.secure_url
-                        // Check if URL already added to prevent duplicates
-                        if (!uploadedUrlsSet.current.has(imageUrl)) {
-                            uploadedUrlsSet.current.add(imageUrl)
-                            addPhoto(imageUrl)
-                        }
-                        uploadedCount++
-                        if (uploadedCount === files.length) {
-                            setIsUploading(false)
-                            showNotification(`${files.length} photos uploaded! 📸`)
-                            // Reload photos from Supabase
-                            setTimeout(() => {
-                                loadPhotosFromSupabase()
-                            }, 500)
-                        }
+                        setTimeout(() => {
+                            if (!uploadedUrlsSet.current.has(imageUrl) && !uploadingUrlsRef.current.has(imageUrl)) {
+                                uploadedUrlsSet.current.add(imageUrl)
+                                addPhoto(imageUrl)
+                            }
+                        }, 100)
+                    }
+                    uploadedCount++
+                    if (uploadedCount === files.length) {
+                        setIsUploading(false)
+                        showNotification(`${files.length} photo(s) uploaded! 📸`)
+                        setTimeout(() => {
+                            loadCurrentUserPhotos(orderCode)
+                        }, 1500)
                     }
                 })
                 .catch(err => {
                     console.error('Upload error:', err)
+                    uploadedCount++
+                    if (uploadedCount === files.length) {
+                        setIsUploading(false)
+                    }
                 })
         })
 
@@ -297,42 +297,84 @@ function Upload() {
     }
 
     async function addPhoto(url) {
-        if (uploadedPhotos.length >= maxPhotos) {
-            showNotification(`Photo limit reached (${maxPhotos})! Upgrade your package for more uploads.`)
+        if (uploadingUrlsRef.current.has(url)) {
+            console.log('Photo already being uploaded:', url)
             return
         }
 
-        const newPhoto = { url: url, tag: 'gallery', uploadedAt: new Date().toISOString() }
-        
-        // Update state immediately for UI feedback
-        setUploadedPhotos(prev => {
-            // Check if photo already exists in state
-            if (prev.some(p => p.url === url)) {
-                return prev
-            }
-            const newPhotos = [...prev, newPhoto]
-            // Update localStorage
-            if (orderCode) {
-                localStorage.setItem(`${STORAGE_KEYS.PHOTOS}_${orderCode}`, JSON.stringify(newPhotos))
-            }
-            return newPhotos
-        })
-        
-        // Save to Supabase
+        if (uploadedPhotos.some(p => p.url === url)) {
+            console.log('Photo already exists:', url)
+            return
+        }
+
+        if (uploadedPhotos.length >= maxPhotos) {
+            showNotification(`Photo limit reached (${maxPhotos})!`)
+            return
+        }
+
+        uploadingUrlsRef.current.add(url)
+
+        const newPhoto = {
+            url: url,
+            tag: 'gallery',
+            uploadedAt: new Date().toISOString()
+        }
+
         try {
-            const { error } = await supabase
+            // Check if already in Supabase for this session
+            const { data: existingPhoto } = await supabase
+                .from('photos')
+                .select('image_url')
+                .eq('image_url', url)
+                .eq('order_code', orderCode)
+                .eq('session_id', sessionId)
+                .single()
+
+            if (existingPhoto) {
+                console.log('Photo already in database, skipping insert')
+                setUploadedPhotos(prev => {
+                    if (prev.some(p => p.url === url)) return prev
+                    return [...prev, newPhoto]
+                })
+                uploadingUrlsRef.current.delete(url)
+                return
+            }
+
+            // Save to Supabase with session ID
+            const { data, error } = await supabase
                 .from('photos')
                 .insert([{
                     order_code: orderCode,
                     image_url: url,
                     tag: 'gallery',
+                    session_id: sessionId,
                     created_at: new Date().toISOString()
                 }])
+                .select()
+
             if (error) {
-                console.log('Supabase save error:', error.message)
+                console.error('Database save error:', error.message)
+                showNotification('Error saving photo. Please try again.')
+                uploadingUrlsRef.current.delete(url)
+                return
             }
+
+            // Update state
+            setUploadedPhotos(prev => {
+                if (prev.some(p => p.url === url)) return prev
+                const newPhotos = [...prev, { ...newPhoto, id: data?.[0]?.id }]
+                return newPhotos
+            })
+
+            showNotification('Photo saved! ✨')
+
         } catch (error) {
-            console.error('Error saving to Supabase:', error)
+            console.error('Error saving to database:', error)
+            showNotification('Error saving photo. Please try again.')
+        } finally {
+            setTimeout(() => {
+                uploadingUrlsRef.current.delete(url)
+            }, 1000)
         }
     }
 
@@ -342,32 +384,20 @@ function Upload() {
             const newPhotos = [...uploadedPhotos]
             newPhotos.splice(index, 1)
             setUploadedPhotos(newPhotos)
-            
-            // Remove from URL tracking set
+
             if (photo.url) {
                 uploadedUrlsSet.current.delete(photo.url)
             }
-            
-            if (orderCode) {
-                localStorage.setItem(`${STORAGE_KEYS.PHOTOS}_${orderCode}`, JSON.stringify(newPhotos))
-            }
-            
-            // Delete from Supabase
-            if (photo.url) {
-                await deleteFromSupabase(photo.url)
-            }
-        }
-    }
 
-    async function deleteFromSupabase(imageUrl) {
-        try {
+            // Delete from Supabase with session ID
             await supabase
                 .from('photos')
                 .delete()
-                .eq('image_url', imageUrl)
+                .eq('image_url', photo.url)
                 .eq('order_code', orderCode)
-        } catch (error) {
-            console.error('Error deleting from Supabase:', error)
+                .eq('session_id', sessionId)
+
+            showNotification('Photo removed')
         }
     }
 
@@ -388,8 +418,7 @@ function Upload() {
         } else if (!rememberName) {
             localStorage.removeItem('guest_sender_name')
         }
-        
-        // Save remember preference
+
         localStorage.setItem('remember_sender_name', rememberName.toString())
 
         const newMessage = {
@@ -399,60 +428,41 @@ function Upload() {
             date: new Date().toISOString()
         }
 
-        const newMessages = [newMessage, ...messages]
-        setMessages(newMessages)
-        
-        if (orderCode) {
-            localStorage.setItem(`${STORAGE_KEYS.MESSAGES}_${orderCode}`, JSON.stringify(newMessages))
-        }
-
-        // Save to Supabase
-        await saveMessageToSupabase(newMessage)
-
-        // Reset form (but keep name if remember is checked)
-        setMessageText('')
-        setSelectedPhoto('')
-        if (!rememberName) {
-            setSenderName('')
-        }
-
-        showNotification(`Message added to ${eventType} slideshow! 💌`)
-    }
-
-    async function saveMessageToSupabase(message) {
+        // Save to Supabase with session ID
         try {
             const { error } = await supabase
                 .from('photos')
                 .insert([{
                     order_code: orderCode,
-                    image_url: message.photo,
-                    name: message.name,
-                    message: message.message,
+                    image_url: newMessage.photo,
+                    name: newMessage.name,
+                    message: newMessage.message,
                     tag: 'slideshow',
-                    created_at: message.date
+                    session_id: sessionId,
+                    created_at: newMessage.date
                 }])
+
             if (error) {
-                console.log('Supabase save error:', error.message)
+                console.error('Database save error:', error.message)
+                showNotification('Error saving your message. Please try again.')
+                return
             }
+
+            showNotification(`Your message has been added to the ${eventType} slideshow! 💌`)
+
+            // Reset form
+            setMessageText('')
+            setSelectedPhoto('')
+            if (!rememberName) {
+                setSenderName('')
+            }
+
+            // Optional: Clear the selected photo from the list or keep it
+            // You can choose to keep the photo for multiple messages
+
         } catch (error) {
-            console.error('Error saving message to Supabase:', error)
-        }
-    }
-
-    async function deleteMessage(index) {
-        if (confirm('Delete this message?')) {
-            const msg = messages[index]
-            const newMessages = [...messages]
-            newMessages.splice(index, 1)
-            setMessages(newMessages)
-            
-            if (orderCode) {
-                localStorage.setItem(`${STORAGE_KEYS.MESSAGES}_${orderCode}`, JSON.stringify(newMessages))
-            }
-
-            if (msg && msg.photo) {
-                await deleteFromSupabase(msg.photo)
-            }
+            console.error('Error saving message:', error)
+            showNotification('Error saving message. Please try again.')
         }
     }
 
@@ -480,7 +490,6 @@ function Upload() {
         return emojis[eventType] || '🎂'
     }
 
-    // Get celebration title based on event type
     const getCelebrationTitle = () => {
         const titles = {
             birthday: 'Share Your Love!',
@@ -493,7 +502,6 @@ function Upload() {
         return titles[eventType] || 'Share Your Love!'
     }
 
-    // Get message placeholder based on event type
     const getMessagePlaceholder = () => {
         const placeholders = {
             birthday: 'Write something sweet for their birthday...',
@@ -511,7 +519,27 @@ function Upload() {
             <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)' }}>
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rose-500 mx-auto mb-4"></div>
-                    <p className="text-gray-600">Loading...</p>
+                    <p className="text-gray-600">Loading celebration...</p>
+                </div>
+            </div>
+        )
+    }
+
+    if (!eventExists && code) {
+        return (
+            <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)' }}>
+                <div className="bg-white rounded-3xl shadow-xl p-8 max-w-md text-center">
+                    <div className="text-6xl mb-4">🔗</div>
+                    <h1 className="text-2xl font-bold text-gray-700 mb-4">Event Not Found</h1>
+                    <p className="text-gray-600 mb-6">This celebration link doesn't exist or has been removed.</p>
+                    {currentUser && (
+                        <button
+                            onClick={() => navigate('/dashboard')}
+                            className="bg-gradient-to-r from-rose-500 to-pink-500 text-white px-6 py-2 rounded-full hover:shadow-lg transition"
+                        >
+                            Go to Dashboard
+                        </button>
+                    )}
                 </div>
             </div>
         )
@@ -519,32 +547,37 @@ function Upload() {
 
     return (
         <div className="p-4 md:p-6 min-h-screen" style={{ background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)' }}>
-            {/* Back Button */}
-            <button
-                onClick={() => navigate('/dashboard')}
-                className="fixed top-4 left-4 bg-white/80 text-rose-500 px-4 py-2 rounded-full text-sm hover:bg-rose-100 transition shadow-lg z-40"
-            >
-                ← Dashboard
-            </button>
+            {/* Back to Dashboard Button - Only show if user is logged in */}
+            {currentUser && (
+                <button
+                    onClick={() => navigate('/dashboard')}
+                    className="fixed top-4 left-4 bg-white/80 text-rose-500 px-4 py-2 rounded-full text-sm hover:bg-rose-100 transition shadow-lg z-40"
+                >
+                    ← Dashboard
+                </button>
+            )}
 
-            {/* Generate Link Button */}
-            <button
-                onClick={generateShareLink}
-                className="fixed top-4 right-4 bg-gradient-to-r from-rose-500 to-pink-500 text-white px-4 py-2 rounded-full text-sm hover:shadow-lg transition z-40"
-            >
-                🔗 Share This Page
-            </button>
+            {/* Generate Share Link Button - Only show for event creators (logged in) */}
+            {currentUser && (
+                <button
+                    onClick={generateShareLink}
+                    className="fixed top-4 right-4 bg-gradient-to-r from-rose-500 to-pink-500 text-white px-4 py-2 rounded-full text-sm hover:shadow-lg transition z-40"
+                >
+                    🔗 Get Shareable Link
+                </button>
+            )}
 
             {/* Share Link Display */}
             {shareLink && (
-                <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-white px-4 py-2 rounded-full shadow-lg z-50">
-                    <p className="text-sm text-gray-600">Link copied! Share: <span className="text-rose-500">{shareLink}</span></p>
+                <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-white px-4 py-2 rounded-full shadow-lg z-50 animate-bounce">
+                    <p className="text-sm text-gray-600">Share this link: <span className="text-rose-500 font-mono text-xs">{shareLink}</span></p>
+                    <p className="text-xs text-gray-400 mt-1">✨ Anyone with this link can upload photos and messages</p>
                 </div>
             )}
 
             {/* Notification */}
             {notification && (
-                <div className="fixed top-4 right-4 bg-rose-500 text-white px-4 py-2 rounded-full shadow-lg z-50">
+                <div className="fixed top-20 right-4 bg-rose-500 text-white px-4 py-2 rounded-full shadow-lg z-50 max-w-md">
                     {notification}
                 </div>
             )}
@@ -555,6 +588,14 @@ function Upload() {
                     <div className="text-6xl mb-4 animate-float">{getCelebrationEmoji()}</div>
                     <h1 className="text-4xl md:text-5xl font-['Dancing_Script'] text-rose-500 mb-4">{getCelebrationTitle()}</h1>
                     <p className="text-gray-600 text-lg">for <span className="font-bold text-rose-500">{eventName || 'the celebration'}</span> 💕</p>
+                    <p className="text-sm text-gray-500 mt-2">Upload your photo and message to be part of the celebration!</p>
+                </div>
+
+                {/* Info Banner */}
+                <div className="bg-rose-100 border border-rose-200 rounded-2xl p-4 mb-6 text-center">
+                    <p className="text-sm text-gray-700">
+                        🎉 No login required! Your photos and messages will appear in the celebration slideshow.
+                    </p>
                 </div>
 
                 {/* Two Column Layout */}
@@ -564,13 +605,16 @@ function Upload() {
                         <h2 className="text-2xl font-bold text-gray-700 mb-6 text-center">📸 Upload Your Photo</h2>
 
                         <div
-                            className="upload-zone rounded-2xl p-8 text-center cursor-pointer"
+                            className="upload-zone rounded-2xl p-8 text-center cursor-pointer transition hover:shadow-lg"
                             onClick={openUploadWidget}
+                            style={{ border: '2px dashed #fbcfe8', background: '#fff5f7' }}
                         >
                             <div className="text-6xl mb-4">📤</div>
                             <p className="text-xl text-gray-600 font-semibold">Tap to Upload Photos</p>
                             <p className="text-gray-400 text-sm mt-2">Max 5MB each • JPG, PNG, GIF • Select multiple files</p>
-                            <p className="text-rose-500 text-sm mt-2 font-semibold">Limit: {uploadedPhotos.length}/{maxPhotos} photos</p>
+                            <p className="text-rose-500 text-sm mt-2 font-semibold">
+                                Your uploads: {uploadedPhotos.length}/{maxPhotos} photos
+                            </p>
                         </div>
 
                         <input
@@ -594,28 +638,29 @@ function Upload() {
                         {/* Uploaded Photos Grid */}
                         <div className="mt-6">
                             <h3 className="font-bold text-gray-700 mb-3">
-                                Your Uploads 📷 ({uploadedPhotos.length}/{maxPhotos})
+                                Your Photos 📷 ({uploadedPhotos.length}/{maxPhotos})
                             </h3>
                             <div className="grid grid-cols-2 gap-3">
                                 {uploadedPhotos.length === 0 ? (
-                                    <div className="col-span-2 text-center py-6 text-gray-400">
-                                        <p>No photos yet</p>
+                                    <div className="col-span-2 text-center py-8 text-gray-400 bg-gray-50 rounded-xl">
+                                        <p>No photos uploaded yet</p>
+                                        <p className="text-xs mt-1">Click above to add your photos</p>
                                     </div>
                                 ) : (
                                     uploadedPhotos.map((photo, index) => (
-                                        <div key={photo.url} className="photo-card relative fade-in">
+                                        <div key={photo.url || index} className="photo-card relative fade-in group">
                                             <img
                                                 src={photo.url}
                                                 alt={`Photo ${index + 1}`}
                                                 className="w-full h-24 object-cover rounded-xl shadow-md"
-                                                onError={(e) => { 
+                                                onError={(e) => {
                                                     console.error('Failed to load image:', photo.url);
-                                                    e.target.style.display = 'none' 
+                                                    e.target.style.display = 'none'
                                                 }}
                                             />
                                             <button
                                                 onClick={() => removePhoto(index)}
-                                                className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600"
+                                                className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition opacity-0 group-hover:opacity-100"
                                             >
                                                 ×
                                             </button>
@@ -638,7 +683,7 @@ function Upload() {
                                         type="text"
                                         value={senderName}
                                         onChange={(e) => setSenderName(e.target.value)}
-                                        className="flex-1 p-3 border-2 border-rose-200 rounded-xl focus:outline-none focus:border-rose-400"
+                                        className="flex-1 p-3 border-2 border-rose-200 rounded-xl focus:outline-none focus:border-rose-400 transition"
                                         placeholder="Enter your name"
                                     />
                                     {localStorage.getItem('guest_sender_name') && (
@@ -669,7 +714,7 @@ function Upload() {
                             </div>
 
                             {currentUser && (
-                                <div className="mb-3 text-xs text-gray-500">
+                                <div className="mb-3 text-xs text-gray-500 bg-blue-50 p-2 rounded">
                                     👤 Logged in as: <span className="font-medium">{currentUser.name}</span>
                                     <button
                                         type="button"
@@ -685,7 +730,7 @@ function Upload() {
                             )}
 
                             <div className="mb-4">
-                                <label className="block text-gray-600 mb-2 font-semibold">Your Photo *</label>
+                                <label className="block text-gray-600 mb-2 font-semibold">Choose Your Photo *</label>
                                 <select
                                     value={selectedPhoto}
                                     onChange={(e) => setSelectedPhoto(e.target.value)}
@@ -697,6 +742,9 @@ function Upload() {
                                         <option key={photo.url} value={photo.url}>Photo {index + 1}</option>
                                     ))}
                                 </select>
+                                {uploadedPhotos.length === 0 && (
+                                    <p className="text-xs text-amber-600 mt-1">⚠️ Please upload a photo first</p>
+                                )}
                             </div>
 
                             <div className="mb-4">
@@ -713,86 +761,61 @@ function Upload() {
 
                             <button
                                 type="submit"
-                                className="w-full bg-gradient-to-r from-rose-500 to-pink-500 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition"
+                                disabled={uploadedPhotos.length === 0}
+                                className={`w-full py-3 rounded-xl font-semibold transition ${uploadedPhotos.length === 0
+                                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                        : 'bg-gradient-to-r from-rose-500 to-pink-500 text-white hover:shadow-lg'
+                                    }`}
                             >
-                                💕 Add to Slideshow
+                                💕 Add to Celebration
                             </button>
                         </form>
 
-                        {/* Quick Tips */}
                         <div className="mt-4 p-3 bg-rose-50 rounded-xl">
                             <p className="text-xs text-gray-500 text-center">
-                                💡 Tip: Your name will be saved automatically. You can change it anytime.
+                                ✨ Your photo and message will appear in the celebration slideshow!
                             </p>
                         </div>
+                    </div>
+                </div>
 
-                        {/* Messages List */}
-                        <div className="mt-6">
-                            <h3 className="font-bold text-gray-700 mb-3">Messages Added 💌</h3>
-                            <div className="space-y-3 max-h-60 overflow-y-auto">
-                                {messages.length === 0 ? (
-                                    <div className="text-center py-6 text-gray-400">
-                                        <p>No messages yet</p>
-                                    </div>
-                                ) : (
-                                    messages.map((msg, index) => (
-                                        <div key={index} className="bg-rose-50 p-3 rounded-xl fade-in">
-                                            <div className="flex items-start gap-3">
-                                                <img src={msg.photo} className="w-16 h-16 object-cover rounded-lg" alt="" />
-                                                <div className="flex-1">
-                                                    <div className="font-bold text-rose-600">{msg.name}</div>
-                                                    <div className="text-gray-600 text-sm">{msg.message}</div>
-                                                    <button
-                                                        onClick={() => deleteMessage(index)}
-                                                        className="text-red-400 text-xs mt-1 hover:text-red-600"
-                                                    >
-                                                        Delete
-                                                    </button>
-                                                </div>
-                                            </div>
+                {/* Preview Section - Show current user's submission */}
+                {uploadedPhotos.length > 0 && (
+                    <div className="mt-8">
+                        <h2 className="text-2xl font-bold text-gray-700 mb-4 text-center">🎬 Your Contribution Preview</h2>
+                        <div className="bg-black rounded-2xl overflow-hidden relative" style={{ height: '300px' }}>
+                            {selectedPhoto ? (
+                                <>
+                                    <img
+                                        src={selectedPhoto}
+                                        className="absolute inset-0 w-full h-full object-cover"
+                                        alt="Preview"
+                                        onError={(e) => {
+                                            console.error('Preview image failed to load');
+                                        }}
+                                    />
+                                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center p-8">
+                                        <div className="text-center">
+                                            <h3 className="text-white text-2xl font-bold font-['Dancing_Script'] mb-2">
+                                                {senderName || 'Your Name'}
+                                            </h3>
+                                            <p className="text-white text-lg">{messageText || 'Your message here'}</p>
                                         </div>
-                                    ))
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Slideshow Preview */}
-                <div className="mt-8">
-                    <h2 className="text-2xl font-bold text-gray-700 mb-4 text-center">🎬 Slideshow Preview</h2>
-                    <div className="bg-black rounded-2xl overflow-hidden relative" style={{ height: '300px' }}>
-                        {messages.length > 0 ? (
-                            <>
-                                <img
-                                    src={messages[0].photo}
-                                    className="absolute inset-0 w-full h-full object-cover"
-                                    alt=""
-                                    onError={(e) => {
-                                        console.error('Preview image failed to load:', messages[0].photo);
-                                    }}
-                                />
-                                <div className="absolute inset-0 bg-black/50 flex items-center justify-center p-8">
-                                    <div className="text-center">
-                                        <h3 className="text-white text-2xl font-bold font-['Dancing_Script'] mb-2">
-                                            {messages[0].name}
-                                        </h3>
-                                        <p className="text-white text-lg">{messages[0].message}</p>
                                     </div>
+                                </>
+                            ) : (
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <p className="text-white text-center p-4">Select a photo and write a message to see your preview! 💌</p>
                                 </div>
-                            </>
-                        ) : (
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <p className="text-white text-center p-4">No messages yet. Add your message above! 💌</p>
-                            </div>
-                        )}
+                            )}
+                        </div>
+                        <p className="text-center text-gray-500 mt-2 text-sm">This is how your contribution will appear</p>
                     </div>
-                    <p className="text-center text-gray-500 mt-2 text-sm">This is what they will see on their celebration page</p>
-                </div>
+                )}
 
                 {/* Footer */}
                 <div className="text-center mt-8 text-gray-500 pb-8">
-                    <p>Made with ❤️ for this special {eventType === 'birthday' ? 'day' : eventType === 'wedding' ? 'wedding' : 'celebration'}</p>
+                    <p>Made with ❤️ for this special {eventType === 'birthday' ? 'birthday' : eventType === 'wedding' ? 'wedding' : 'celebration'}</p>
                 </div>
             </div>
         </div>
