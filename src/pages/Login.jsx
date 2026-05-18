@@ -78,13 +78,37 @@ function Login() {
         setError('')
         setIsLoading(true)
 
+        if (!email.trim() || !password) {
+            setError('Please enter both email and password')
+            setIsLoading(false)
+            return
+        }
+
         try {
             const { data, error } = await supabase.auth.signInWithPassword({
                 email: email.trim().toLowerCase(),
                 password: password
             })
 
-            if (error) throw error
+            if (error) {
+                console.error('Login error:', error)
+
+                // Check if user exists in your users table
+                const { data: userExists } = await supabase
+                    .from('users')
+                    .select('id')
+                    .eq('email', email.trim().toLowerCase())
+                    .single()
+
+                if (userExists) {
+                    // User exists but likely has no password (registered via OTP)
+                    setError('This account was created without a password. Please use "Login with One-Time Code" or reset your password.')
+                } else {
+                    setError('Invalid email or password. Please try again or create an account.')
+                }
+                setIsLoading(false)
+                return
+            }
 
             if (data?.user) {
                 const { data: profile } = await supabase
@@ -105,7 +129,8 @@ function Login() {
             }
 
         } catch (err) {
-            setError(err.message || 'Invalid email or password')
+            console.error('Login error:', err)
+            setError('An unexpected error occurred. Please try again.')
         } finally {
             setIsLoading(false)
         }

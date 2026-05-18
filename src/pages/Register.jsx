@@ -64,10 +64,10 @@ function Register() {
             })
 
             if (error) throw error
-            
+
             setShowOtpInput(true)
             startCountdown()
-            
+
         } catch (err) {
             setError(err.message || 'Failed to send verification code. Please try again.')
         } finally {
@@ -90,7 +90,7 @@ function Register() {
             if (error) throw error
 
             if (data?.user) {
-                // Create user profile
+                // Create user profile in your users table
                 const { error: profileError } = await supabase.from('users').insert([{
                     id: data.user.id,
                     name: name.trim(),
@@ -104,19 +104,22 @@ function Register() {
                     console.log('Profile save error:', profileError.message)
                 }
 
-                // Get the session to ensure user is logged in
-                const { data: { session } } = await supabase.auth.getSession()
-                
-                if (!session) {
-                    // If no session, sign the user in with password
-                    const { error: signInError } = await supabase.auth.signInWithPassword({
-                        email: email.trim().toLowerCase(),
-                        password: password
-                    })
-                    
-                    if (signInError) {
-                        console.error('Auto-login error:', signInError)
-                    }
+                // Create free package for the user
+                const { error: packageError } = await supabase
+                    .from('user_packages')
+                    .insert([{
+                        user_id: data.user.id,
+                        package_id: 74,  // Free package ID
+                        package_tier: 'free',
+                        started_at: new Date().toISOString(),
+                        expires_at: null,
+                        is_active: true,
+                        payment_status: 'free',
+                        created_at: new Date().toISOString()
+                    }])
+
+                if (packageError) {
+                    console.log('Package creation error:', packageError.message)
                 }
 
                 // Save to localStorage
@@ -125,7 +128,7 @@ function Register() {
                     email: email.trim().toLowerCase(),
                     name: name.trim(),
                     role: 'user',
-                    package_tier: null
+                    package_tier: 'free'
                 }))
 
                 // Show success then redirect
@@ -194,8 +197,40 @@ function Register() {
             return
         }
 
-        // Send OTP
-        await sendOTP()
+        setIsLoading(true)
+
+        try {
+            // FIRST: Create the user with password in Supabase Auth
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+                email: email.trim().toLowerCase(),
+                password: password,  // This creates the user with a password
+                options: {
+                    data: {
+                        full_name: name.trim(),
+                        phone: phone.trim()
+                    }
+                }
+            })
+
+            if (signUpError) {
+                if (signUpError.message.includes('User already registered')) {
+                    setError('An account with this email already exists. Please login instead.')
+                } else {
+                    throw signUpError
+                }
+                setIsLoading(false)
+                return
+            }
+
+            if (signUpData?.user) {
+                // Send OTP for email verification
+                await sendOTP()
+            }
+
+        } catch (err) {
+            setError(err.message || 'Registration failed. Please try again.')
+            setIsLoading(false)
+        }
     }
 
     return (
@@ -235,7 +270,7 @@ function Register() {
                                 <p className="text-rose-600 font-semibold mb-6 text-lg bg-rose-50 py-2 px-4 rounded-full inline-block break-all max-w-full">
                                     {email}
                                 </p>
-                                
+
                                 <div className="mb-6">
                                     <input
                                         type="text"
@@ -263,7 +298,7 @@ function Register() {
                                             'Verify Code'
                                         )}
                                     </button>
-                                    
+
                                     <button
                                         onClick={sendOTP}
                                         disabled={countdown > 0 || isLoading}
@@ -399,30 +434,29 @@ function Register() {
                                             )}
                                         </button>
                                     </div>
-                                    
+
                                     {/* Password Strength Meter */}
                                     {password && (
                                         <div className="mt-2">
                                             <div className="flex items-center gap-2 mb-1">
                                                 <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                                    <div 
+                                                    <div
                                                         className={`h-full ${passwordStrength.color} transition-all duration-300 rounded-full`}
                                                         style={{ width: `${passwordStrength.percent}%` }}
                                                     />
                                                 </div>
-                                                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                                                    passwordStrength.label === 'Strong' ? 'bg-green-100 text-green-700' :
-                                                    passwordStrength.label === 'Good' ? 'bg-blue-100 text-blue-700' :
-                                                    passwordStrength.label === 'Fair' ? 'bg-yellow-100 text-yellow-700' :
-                                                    'bg-red-100 text-red-700'
-                                                }`}>
+                                                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${passwordStrength.label === 'Strong' ? 'bg-green-100 text-green-700' :
+                                                        passwordStrength.label === 'Good' ? 'bg-blue-100 text-blue-700' :
+                                                            passwordStrength.label === 'Fair' ? 'bg-yellow-100 text-yellow-700' :
+                                                                'bg-red-100 text-red-700'
+                                                    }`}>
                                                     {passwordStrength.label}
                                                 </span>
                                             </div>
                                             <p className="text-xs text-gray-500">
                                                 {passwordStrength.label === 'Strong' ? '✓ Great password!' :
-                                                 passwordStrength.label === 'Good' ? 'Add special characters to make it stronger' :
-                                                 'Use 10+ chars with uppercase, numbers & symbols'}
+                                                    passwordStrength.label === 'Good' ? 'Add special characters to make it stronger' :
+                                                        'Use 10+ chars with uppercase, numbers & symbols'}
                                             </p>
                                         </div>
                                     )}

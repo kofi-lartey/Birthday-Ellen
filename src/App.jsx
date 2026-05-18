@@ -28,24 +28,46 @@ import CreateEvent from './pages/CreateEvent'
 import EditEvent from './pages/EditEvent'
 import EventView from './pages/EventView'
 import AuthCallback from './pages/AuthCallback'
+import ForgotPassword from './pages/ForgotPassword'
 
 function ResetPassword() {
     const [password, setPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
     const [message, setMessage] = useState('')
     const [isLoading, setIsLoading] = useState(false)
+    const [isValidToken, setIsValidToken] = useState(true)
     const navigate = useNavigate()
 
     useEffect(() => {
-        const { hash } = window.location
-        if (!hash.includes('access_token')) {
-            setMessage('Invalid reset link. Please request a new password reset.')
+        const checkToken = async () => {
+            const { hash } = window.location
+
+            if (!hash || !hash.includes('access_token')) {
+                setMessage('Invalid or missing reset link. Please request a new password reset.')
+                setIsValidToken(false)
+                return
+            }
+
+            // Check if we can get the session (token is valid)
+            const { data: { session }, error } = await supabase.auth.getSession()
+
+            if (error || !session) {
+                setMessage('This reset link has expired or is invalid. Please request a new password reset.')
+                setIsValidToken(false)
+            }
         }
+
+        checkToken()
     }, [])
 
     async function handleReset(e) {
         e.preventDefault()
         setMessage('')
+
+        if (!isValidToken) {
+            setMessage('Cannot reset password. Please request a new reset link.')
+            return
+        }
 
         if (password !== confirmPassword) {
             setMessage('Passwords do not match!')
@@ -59,16 +81,24 @@ function ResetPassword() {
 
         setIsLoading(true)
 
-        const { error } = await supabase.auth.updateUser({ password })
+        try {
+            const { error } = await supabase.auth.updateUser({ password })
 
-        if (error) {
-            setMessage('Error: ' + error.message)
-        } else {
-            setMessage('Password updated successfully! Redirecting to login...')
-            setTimeout(() => navigate('/login'), 2000)
+            if (error) {
+                if (error.message.includes('expired')) {
+                    setMessage('This reset link has expired. Please request a new password reset.')
+                } else {
+                    setMessage('Error: ' + error.message)
+                }
+            } else {
+                setMessage('✅ Password updated successfully! Redirecting to login...')
+                setTimeout(() => navigate('/login'), 2000)
+            }
+        } catch (err) {
+            setMessage('Failed to update password. Please try again.')
+        } finally {
+            setIsLoading(false)
         }
-
-        setIsLoading(false)
     }
 
     return (
@@ -78,49 +108,78 @@ function ResetPassword() {
                     <div className="text-center mb-8">
                         <div className="text-6xl mb-4">🔐</div>
                         <h1 className="text-3xl font-['Dancing_Script'] text-rose-500">Reset Password</h1>
-                        <p className="text-gray-500 mt-2">Enter your new password</p>
+                        <p className="text-gray-500 mt-2">
+                            {isValidToken ? 'Enter your new password' : 'Invalid Reset Link'}
+                        </p>
                     </div>
 
-                    <form onSubmit={handleReset}>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-gray-600 mb-2">New Password</label>
-                                <input
-                                    type="password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    required
-                                    className="w-full p-3 border-2 border-rose-200 rounded-xl focus:outline-none focus:border-rose-400"
-                                    placeholder="At least 6 characters"
-                                />
+                    {isValidToken ? (
+                        <form onSubmit={handleReset}>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-gray-600 mb-2">New Password</label>
+                                    <div className="relative">
+                                        <input
+                                            type="password"
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            required
+                                            className="w-full p-3 border-2 border-rose-200 rounded-xl focus:outline-none focus:border-rose-400"
+                                            placeholder="At least 6 characters"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-gray-600 mb-2">Confirm Password</label>
+                                    <div className="relative">
+                                        <input
+                                            type="password"
+                                            value={confirmPassword}
+                                            onChange={(e) => setConfirmPassword(e.target.value)}
+                                            required
+                                            className="w-full p-3 border-2 border-rose-200 rounded-xl focus:outline-none focus:border-rose-400"
+                                            placeholder="Confirm your password"
+                                        />
+                                    </div>
+                                </div>
                             </div>
-                            <div>
-                                <label className="block text-gray-600 mb-2">Confirm Password</label>
-                                <input
-                                    type="password"
-                                    value={confirmPassword}
-                                    onChange={(e) => setConfirmPassword(e.target.value)}
-                                    required
-                                    className="w-full p-3 border-2 border-rose-200 rounded-xl focus:outline-none focus:border-rose-400"
-                                    placeholder="Confirm your password"
-                                />
-                            </div>
+
+                            {message && (
+                                <div className={`mt-4 p-3 rounded-xl text-sm ${message.includes('success') || message.includes('✅') ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+                                    {message}
+                                </div>
+                            )}
+
+                            <button
+                                type="submit"
+                                disabled={isLoading || !isValidToken}
+                                className="w-full mt-6 bg-gradient-to-r from-rose-500 to-pink-500 text-white py-4 rounded-xl font-semibold hover:shadow-lg transition disabled:opacity-50"
+                            >
+                                {isLoading ? 'Resetting...' : 'Reset Password'}
+                            </button>
+                        </form>
+                    ) : (
+                        <div className="text-center">
+                            <div className="text-6xl mb-4">❌</div>
+                            {message && (
+                                <div className="mb-6 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+                                    {message}
+                                </div>
+                            )}
+                            <button
+                                onClick={() => navigate('/forgot-password')}
+                                className="w-full bg-gradient-to-r from-rose-500 to-pink-500 text-white py-4 rounded-xl font-semibold hover:shadow-lg transition"
+                            >
+                                Request New Reset Link
+                            </button>
+                            <button
+                                onClick={() => navigate('/login')}
+                                className="w-full mt-3 bg-gray-100 text-gray-700 py-4 rounded-xl font-semibold hover:bg-gray-200 transition"
+                            >
+                                Back to Login
+                            </button>
                         </div>
-
-                        {message && (
-                            <div className={`mt-4 p-3 rounded-xl text-sm ${message.includes('success') ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
-                                {message}
-                            </div>
-                        )}
-
-                        <button
-                            type="submit"
-                            disabled={isLoading || message.includes('Invalid')}
-                            className="w-full mt-6 bg-gradient-to-r from-rose-500 to-pink-500 text-white py-4 rounded-xl font-semibold hover:shadow-lg transition disabled:opacity-50"
-                        >
-                            {isLoading ? 'Resetting...' : 'Reset Password'}
-                        </button>
-                    </form>
+                    )}
                 </div>
             </div>
         </div>
@@ -140,6 +199,8 @@ function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
+
+                <Route path="/forgot-password" element={<ForgotPassword />} />
 
                 {/* Package & Payment */}
                 <Route path="/select-package" element={<SelectPackage />} />
