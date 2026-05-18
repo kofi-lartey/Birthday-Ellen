@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase, STORAGE_KEYS } from '../supabase'
 
+// App icon URL for watermark
+const APP_ICON_URL = 'https://res.cloudinary.com/djjgkezui/image/upload/v1778959179/IMG-20260516-WA0050_zegaok.jpg'
+
 function Slideshow() {
     const { code } = useParams()
     const [slides, setSlides] = useState([])
@@ -78,6 +81,17 @@ function Slideshow() {
 
     const eventText = getEventText()
     const celebrantName = orderConfig?.recipient_name || orderConfig?.nickname || orderConfig?.couple_names || eventText.defaultCelebrant
+
+    // Load app icon helper
+    async function loadAppIcon() {
+        return new Promise((resolve) => {
+            const img = new Image()
+            img.crossOrigin = 'anonymous'
+            img.onload = () => resolve(img)
+            img.onerror = () => resolve(null)
+            img.src = APP_ICON_URL
+        })
+    }
 
     useEffect(() => {
         setPopAnimationKey(prev => prev + 1)
@@ -362,10 +376,17 @@ function Slideshow() {
             const ctx = canvas.getContext('2d')
             const img = new Image()
             img.crossOrigin = 'anonymous'
-            img.onload = () => {
+
+            let appIcon = null
+            const loadAppIconPromise = loadAppIcon()
+
+            img.onload = async () => {
                 canvas.width = img.width
                 canvas.height = img.height
                 ctx.drawImage(img, 0, 0)
+
+                appIcon = await loadAppIconPromise
+
                 const padding = canvas.width * 0.05
                 const boxWidth = canvas.width * 0.85
                 const boxX = (canvas.width - boxWidth) / 2
@@ -374,6 +395,7 @@ function Slideshow() {
                 const lineHeight = messageFontSize * 1.5
                 ctx.textAlign = "center"
                 ctx.textBaseline = "top"
+
                 function wrapText(text, maxWidth) {
                     const words = text.split(" ")
                     let lines = [], line = ""
@@ -387,6 +409,7 @@ function Slideshow() {
                     lines.push(line.trim())
                     return lines
                 }
+
                 const slideData = slides.find(s => s.photo === imageUrl) || { name: 'Memory', message: 'A special moment' }
                 ctx.font = `${messageFontSize}px Outfit, sans-serif`
                 const messageLines = wrapText(slideData.message, boxWidth - padding * 2)
@@ -415,6 +438,27 @@ function Slideshow() {
                 ctx.font = `${messageFontSize}px Outfit, sans-serif`
                 let startY = boxY + padding + nameFontSize + padding / 2
                 messageLines.forEach(line => { ctx.fillText(line, canvas.width / 2, startY); startY += lineHeight })
+
+                // Add TikTok-style watermark to downloaded image
+                if (appIcon) {
+                    const watermarkSize = canvas.width * 0.08
+                    const watermarkX = canvas.width - watermarkSize - 15
+                    const watermarkY = canvas.height - watermarkSize - 15
+
+                    ctx.beginPath()
+                    ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, watermarkSize / 2 + 5, 0, Math.PI * 2)
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
+                    ctx.fill()
+
+                    ctx.drawImage(appIcon, watermarkX, watermarkY, watermarkSize, watermarkSize)
+
+                    ctx.beginPath()
+                    ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, watermarkSize / 2 + 8, 0, Math.PI * 2)
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)'
+                    ctx.lineWidth = 2
+                    ctx.stroke()
+                }
+
                 canvas.toBlob(blob => {
                     if (!blob) { if (!silent) alert("Download failed."); resolve(); return }
                     const link = document.createElement("a")
@@ -429,15 +473,15 @@ function Slideshow() {
         })
     }
 
-    // ========== VIDEO RENDERING FUNCTIONS ==========
+    // ========== VIDEO RENDERING FUNCTIONS WITH WATERMARK ==========
 
     async function renderIntro(ctx, width, height) {
         const fps = 30
-        const totalFrames = 120 // 4 seconds (increased for more dramatic intro)
+        const totalFrames = 120
+        const appIcon = await loadAppIcon()
 
-        // Enhanced particle system with more variety
         const particles = []
-        const particleCount = 35 // More particles
+        const particleCount = 35
 
         const particleTypes = {
             birthday: ['❤️', '🎂', '🎈', '🎁', '✨', '🎉', '🎊', '💝'],
@@ -465,7 +509,6 @@ function Slideshow() {
             })
         }
 
-        // Add floating sparkles that twinkle
         const sparkles = []
         const sparkleCount = 40
         for (let i = 0; i < sparkleCount; i++) {
@@ -480,20 +523,15 @@ function Slideshow() {
         }
 
         let offsetX = 0, offsetY = 0
-        let time = 0
 
         for (let i = 0; i < totalFrames; i++) {
-            time = i / fps
             const progress = i / totalFrames
             const easeProgress = 1 - Math.pow(1 - progress, 3)
             const easeInOut = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2
 
-            // Animated background with shifting colors
             offsetX = Math.sin(i * 0.02) * 60
             offsetY = Math.cos(i * 0.03) * 40
 
-            // Dynamic gradient that shifts colors over time
-            const hueShift = (i * 0.5) % 360
             const grad = ctx.createLinearGradient(
                 width / 2 + offsetX, 0,
                 width / 2 - offsetX, height
@@ -520,7 +558,6 @@ function Slideshow() {
             ctx.fillStyle = grad
             ctx.fillRect(0, 0, width, height)
 
-            // Draw floating sparkles with twinkling effect
             sparkles.forEach(sparkle => {
                 const twinkle = 0.3 + 0.7 * (Math.sin(i * sparkle.twinkleSpeed + sparkle.phase) + 1) / 2
                 ctx.beginPath()
@@ -529,13 +566,10 @@ function Slideshow() {
                 ctx.fill()
             })
 
-            // Draw animated particles with wavy motion
             particles.forEach(p => {
-                // Add wavy horizontal movement
                 const waveX = Math.sin(i * p.waveSpeed + p.waveOffset) * 20
                 p.x += p.speedX + waveX * 0.05
                 p.y += p.speedY
-
                 p.rotation += p.rotationSpeed
 
                 if (p.y < -50) {
@@ -548,22 +582,16 @@ function Slideshow() {
                 ctx.save()
                 ctx.translate(p.x, p.y)
                 ctx.rotate(p.rotation * Math.PI / 180)
-
-                // Pulsing opacity
                 const pulse = 0.5 + 0.5 * Math.sin(i * 0.05 + p.x * 0.01)
                 ctx.globalAlpha = p.opacity * (0.6 + 0.4 * pulse)
-
-                // Scale with pulse
                 const scale = 0.8 + 0.4 * Math.sin(i * 0.08)
                 ctx.scale(scale, scale)
-
                 ctx.font = `${p.size}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`
                 ctx.fillStyle = '#ff6b9d'
                 ctx.fillText(p.type, 0, 0)
                 ctx.restore()
             })
 
-            // Animated decorative circles in background
             for (let c = 0; c < 3; c++) {
                 const circleScale = 0.5 + Math.sin(i * 0.02 + c) * 0.3
                 const circleX = width / 2 + Math.sin(i * 0.01 + c) * 100
@@ -574,7 +602,6 @@ function Slideshow() {
                 ctx.fill()
             }
 
-            // Main title animation
             const scale = 0.5 + easeProgress * 0.6
             const alpha = Math.min(1, progress * 2)
             const yOffset = -20 * (1 - easeProgress)
@@ -586,7 +613,6 @@ function Slideshow() {
             ctx.scale(scale, scale)
             ctx.globalAlpha = alpha
 
-            // Gradient text with glow effect
             const textGrad = ctx.createLinearGradient(-200, 0, 200, 0)
             textGrad.addColorStop(0, '#f9c1d9')
             textGrad.addColorStop(0.3, '#ff9eb5')
@@ -594,13 +620,11 @@ function Slideshow() {
             textGrad.addColorStop(1, '#f9c1d9')
             ctx.fillStyle = textGrad
 
-            // Main title text
             ctx.font = 'bold 80px "Playfair Display", "Poppins", serif'
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
             ctx.fillText(eventText.title, 0, -30)
 
-            // Secondary line with celebrant name - animated bounce
             const bounce = Math.sin(i * 0.15) * 8
             const secondScale = 0.9 + Math.sin(i * 0.1) * 0.05
             ctx.font = `bold ${85 * secondScale}px "Dancing Script", "Playfair Display", cursive`
@@ -609,7 +633,62 @@ function Slideshow() {
             ctx.fillText(`${celebrantName} ${eventText.emoji}`, 0, 100 + bounce)
             ctx.restore()
 
-            // Animated confetti/particle bursts at key moments
+            // Add watermark to intro
+            // Animated watermark for intro - moving around the screen
+            if (appIcon) {
+                const watermarkSize = width * 0.07
+                const margin = 20
+
+                const cycleDuration = 300
+                const cycleProgress = (i % cycleDuration) / cycleDuration
+
+                let watermarkX, watermarkY
+
+                if (cycleProgress < 0.25) {
+                    const t = cycleProgress / 0.25
+                    watermarkX = (width - watermarkSize - margin) * (1 - t)
+                    watermarkY = margin
+                } else if (cycleProgress < 0.5) {
+                    const t = (cycleProgress - 0.25) / 0.25
+                    watermarkX = margin
+                    watermarkY = margin + (height - watermarkSize - margin * 2) * t
+                } else if (cycleProgress < 0.75) {
+                    const t = (cycleProgress - 0.5) / 0.25
+                    watermarkX = margin + (width - watermarkSize - margin * 2) * t
+                    watermarkY = height - watermarkSize - margin
+                } else {
+                    const t = (cycleProgress - 0.75) / 0.25
+                    watermarkX = width - watermarkSize - margin
+                    watermarkY = height - watermarkSize - margin - (height - watermarkSize - margin * 2) * t
+                }
+
+                const pulseScale = 1 + Math.sin(i * 0.15) * 0.08
+                const rotation = i * 0.03
+
+                ctx.save()
+                ctx.translate(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2)
+                ctx.rotate(rotation)
+                ctx.scale(pulseScale, pulseScale)
+                ctx.translate(-(watermarkX + watermarkSize / 2), -(watermarkY + watermarkSize / 2))
+
+                ctx.shadowColor = 'rgba(255, 105, 180, 0.6)'
+                ctx.shadowBlur = 12
+
+                ctx.beginPath()
+                ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, (watermarkSize / 2 + 10) * pulseScale, 0, Math.PI * 2)
+                ctx.strokeStyle = `rgba(255, 107, 157, 0.7)`
+                ctx.lineWidth = 2.5
+                ctx.stroke()
+
+                ctx.beginPath()
+                ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, watermarkSize / 2 + 6, 0, Math.PI * 2)
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
+                ctx.fill()
+
+                ctx.drawImage(appIcon, watermarkX, watermarkY, watermarkSize, watermarkSize)
+                ctx.restore()
+            }
+
             if (progress > 0.3 && progress < 0.7 && i % 10 === 0) {
                 for (let b = 0; b < 5; b++) {
                     const angle = Math.random() * Math.PI * 2
@@ -626,7 +705,6 @@ function Slideshow() {
                 }
             }
 
-            // Animated decorative borders
             const borderProgress = easeInOut
             const borderWidth = width * 0.02
             ctx.save()
@@ -635,7 +713,6 @@ function Slideshow() {
             ctx.lineWidth = borderWidth
             ctx.strokeRect(borderWidth, borderWidth, width - borderWidth * 2, height - borderWidth * 2)
 
-            // Add corner decorations
             const cornerSize = 40
             ctx.beginPath()
             ctx.moveTo(borderWidth, borderWidth + cornerSize)
@@ -666,9 +743,231 @@ function Slideshow() {
         }
     }
 
+    async function renderSlideForVideo(ctx, width, height, slide, slideNumber, totalSlides, globalFrame = 0) {
+        const img = new Image()
+        img.crossOrigin = "anonymous"
+        await new Promise(resolve => { img.onload = resolve; img.src = slide.photo })
+
+        const appIcon = await loadAppIcon()
+        const fps = 30
+        const frames = 150
+
+        for (let frame = 0; frame < frames; frame++) {
+            ctx.clearRect(0, 0, width, height)
+
+            const imgRatio = img.width / img.height
+            const canvasRatio = width / height
+            let sx = 0, sy = 0, sw = img.width, sh = img.height
+            if (imgRatio > canvasRatio) {
+                sw = img.height * canvasRatio
+                sx = (img.width - sw) / 2
+            } else {
+                sh = img.width / canvasRatio
+                sy = (img.height - sh) / 2
+            }
+            ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height)
+
+            const vignette = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, width / 1.5)
+            vignette.addColorStop(0, 'rgba(0,0,0,0)')
+            vignette.addColorStop(0.7, 'rgba(0,0,0,0.2)')
+            vignette.addColorStop(1, 'rgba(0,0,0,0.6)')
+            ctx.fillStyle = vignette
+            ctx.fillRect(0, 0, width, height)
+
+            const padding = width * 0.04
+            const nameFontSize = width * 0.045
+            const messageFontSize = width * 0.03
+            const lineHeight = messageFontSize * 1.4
+
+            function wrapText(text, maxWidth) {
+                const words = text.split(' ')
+                const lines = []
+                let line = ''
+                for (let word of words) {
+                    const testLine = line + word + ' '
+                    if (ctx.measureText(testLine).width > maxWidth && line !== '') {
+                        lines.push(line.trim())
+                        line = word + ' '
+                    } else {
+                        line = testLine
+                    }
+                }
+                lines.push(line.trim())
+                return lines
+            }
+
+            const msgLines = wrapText(slide.message, width * 0.7)
+            const barHeight = padding * 2 + nameFontSize + (msgLines.length * lineHeight) + padding
+            const barWidth = width * 0.8
+            const barX = (width - barWidth) / 2
+            const barY = height - barHeight - 40
+            const radius = width * 0.02
+
+            ctx.beginPath()
+            ctx.moveTo(barX + radius, barY)
+            ctx.lineTo(barX + barWidth - radius, barY)
+            ctx.quadraticCurveTo(barX + barWidth, barY, barX + barWidth, barY + radius)
+            ctx.lineTo(barX + barWidth, barY + barHeight - radius)
+            ctx.quadraticCurveTo(barX + barWidth, barY + barHeight, barX + barWidth - radius, barY + barHeight)
+            ctx.lineTo(barX + radius, barY + barHeight)
+            ctx.quadraticCurveTo(barX, barY + barHeight, barX, barY + barHeight - radius)
+            ctx.lineTo(barX, barY + radius)
+            ctx.quadraticCurveTo(barX, barY, barX + radius, barY)
+            ctx.closePath()
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.65)'
+            ctx.fill()
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'
+            ctx.lineWidth = 1.5
+            ctx.stroke()
+
+            const nameGrad = ctx.createLinearGradient(barX + 50, barY + padding, barX + barWidth - 50, barY + padding + nameFontSize)
+            nameGrad.addColorStop(0, '#f9c1d9')
+            nameGrad.addColorStop(1, '#ff6b9d')
+            ctx.fillStyle = nameGrad
+            ctx.font = `600 ${nameFontSize}px "Poppins", sans-serif`
+            ctx.shadowColor = 'rgba(0,0,0,0.5)'
+            ctx.shadowBlur = 8
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'top'
+            ctx.fillText(slide.name, width / 2, barY + padding)
+
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
+            ctx.font = `${messageFontSize}px "Poppins", sans-serif`
+            ctx.shadowBlur = 4
+            let yOffset = barY + padding + nameFontSize + 10
+            for (let line of msgLines) {
+                ctx.fillText(line, width / 2, yOffset)
+                yOffset += lineHeight
+            }
+
+            ctx.textAlign = 'right'
+            ctx.font = `bold ${width * 0.025}px "Poppins", sans-serif`
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
+            ctx.fillText(`${slideNumber}/${totalSlides}`, width - 20, 30)
+
+            ctx.textAlign = 'left'
+            ctx.font = `${width * 0.018}px "Poppins", sans-serif`
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'
+            ctx.fillText('Designed by KofiLartey', 20, height - 20)
+
+            // ========== ANIMATED WATERMARK THAT MOVES AROUND THE SCREEN ==========
+            if (appIcon) {
+                const watermarkSize = width * 0.08
+                const margin = 20
+
+                // Total animation cycle duration (in frames)
+                const cycleDuration = 300 // frames for a full cycle
+                const cycleProgress = ((globalFrame + frame) % cycleDuration) / cycleDuration
+
+                // Determine which edge and position based on progress
+                let watermarkX, watermarkY
+                let isOnEdge = true
+
+                // Cycle through positions: top-right -> bottom-right -> bottom-left -> top-left -> back to top-right
+                if (cycleProgress < 0.25) {
+                    // Top edge moving from right to left
+                    const t = cycleProgress / 0.25 // 0 to 1
+                    watermarkX = (width - watermarkSize - margin) * (1 - t)
+                    watermarkY = margin
+                } else if (cycleProgress < 0.5) {
+                    // Left edge moving from top to bottom
+                    const t = (cycleProgress - 0.25) / 0.25 // 0 to 1
+                    watermarkX = margin
+                    watermarkY = margin + (height - watermarkSize - margin * 2) * t
+                } else if (cycleProgress < 0.75) {
+                    // Bottom edge moving from left to right
+                    const t = (cycleProgress - 0.5) / 0.25 // 0 to 1
+                    watermarkX = margin + (width - watermarkSize - margin * 2) * t
+                    watermarkY = height - watermarkSize - margin
+                } else {
+                    // Right edge moving from bottom to top
+                    const t = (cycleProgress - 0.75) / 0.25 // 0 to 1
+                    watermarkX = width - watermarkSize - margin
+                    watermarkY = height - watermarkSize - margin - (height - watermarkSize - margin * 2) * t
+                }
+
+                // Add smooth easing to the movement
+                const easeInOutCubic = (t) => {
+                    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+                }
+
+                // Pulsing scale effect
+                const pulseScale = 1 + Math.sin((globalFrame + frame) * 0.15) * 0.08
+
+                // Rotation effect (spins as it moves)
+                const rotation = (globalFrame + frame) * 0.03
+
+                ctx.save()
+
+                // Move to watermark position and apply transformations
+                ctx.translate(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2)
+                ctx.rotate(rotation)
+                ctx.scale(pulseScale, pulseScale)
+                ctx.translate(-(watermarkX + watermarkSize / 2), -(watermarkY + watermarkSize / 2))
+
+                // Glowing shadow effect
+                ctx.shadowColor = 'rgba(255, 105, 180, 0.6)'
+                ctx.shadowBlur = 12
+
+                // Outer pulsing ring
+                const ringPulse = 0.8 + Math.sin((globalFrame + frame) * 0.2) * 0.2
+                ctx.beginPath()
+                ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, (watermarkSize / 2 + 10) * ringPulse, 0, Math.PI * 2)
+                ctx.strokeStyle = `rgba(255, 107, 157, ${0.7 + Math.sin((globalFrame + frame) * 0.15) * 0.3})`
+                ctx.lineWidth = 2.5
+                ctx.stroke()
+
+                // Second rotating ring
+                const ringRotation = (globalFrame + frame) * 0.02
+                ctx.beginPath()
+                ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, (watermarkSize / 2 + 15) * pulseScale, ringRotation, ringRotation + Math.PI * 1.8)
+                ctx.strokeStyle = `rgba(255, 200, 100, ${0.5 + Math.sin((globalFrame + frame) * 0.1) * 0.2})`
+                ctx.lineWidth = 2
+                ctx.stroke()
+
+                // Background circle
+                ctx.beginPath()
+                ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, watermarkSize / 2 + 6, 0, Math.PI * 2)
+                ctx.fillStyle = `rgba(0, 0, 0, ${0.5 + Math.sin((globalFrame + frame) * 0.12) * 0.1})`
+                ctx.fill()
+
+                // Draw the app icon
+                ctx.drawImage(appIcon, watermarkX, watermarkY, watermarkSize, watermarkSize)
+
+                // Add a subtle white ring around the icon
+                ctx.beginPath()
+                ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, watermarkSize / 2 + 3, 0, Math.PI * 2)
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)'
+                ctx.lineWidth = 1.5
+                ctx.stroke()
+
+                // Add small sparkle particles around the watermark when it's moving
+                if (Math.sin((globalFrame + frame) * 0.3) > 0.5) {
+                    for (let s = 0; s < 3; s++) {
+                        const angle = (globalFrame + frame) * 0.2 + s * Math.PI * 2 / 3
+                        const radius = watermarkSize / 2 + 12 + Math.sin((globalFrame + frame) * 0.4) * 3
+                        const sparkleX = watermarkX + watermarkSize / 2 + Math.cos(angle) * radius
+                        const sparkleY = watermarkY + watermarkSize / 2 + Math.sin(angle) * radius
+
+                        ctx.beginPath()
+                        ctx.arc(sparkleX, sparkleY, 2 + Math.sin((globalFrame + frame) * 0.5 + s) * 1, 0, Math.PI * 2)
+                        ctx.fillStyle = `rgba(255, 200, 100, ${0.6 + Math.sin((globalFrame + frame) * 0.3) * 0.4})`
+                        ctx.fill()
+                    }
+                }
+
+                ctx.restore()
+            }
+
+            ctx.shadowBlur = 0
+            await new Promise(r => setTimeout(r, 1000 / fps))
+        }
+    }
+
     async function renderOutro(ctx, width, height) {
         const fps = 30
-        const totalFrames = 180 // 6 seconds
+        const totalFrames = 180
+        const appIcon = await loadAppIcon()
 
         const stars = []
         for (let s = 0; s < 30; s++) {
@@ -823,118 +1122,62 @@ function Slideshow() {
                 }
             }
 
-            ctx.globalAlpha = 1
-            await new Promise(r => setTimeout(r, 1000 / fps))
-        }
-    }
+            // Add watermark to outro
+            if (appIcon) {
+                const watermarkSize = width * 0.07
+                const margin = 20
 
-    async function renderSlideForVideo(ctx, width, height, slide, slideNumber, totalSlides) {
-        const img = new Image()
-        img.crossOrigin = "anonymous"
-        await new Promise(resolve => { img.onload = resolve; img.src = slide.photo })
+                const cycleDuration = 300
+                const cycleProgress = (i % cycleDuration) / cycleDuration
 
-        const fps = 30
-        const frames = 150
+                let watermarkX, watermarkY
 
-        for (let frame = 0; frame < frames; frame++) {
-            ctx.clearRect(0, 0, width, height)
-
-            const imgRatio = img.width / img.height
-            const canvasRatio = width / height
-            let sx = 0, sy = 0, sw = img.width, sh = img.height
-            if (imgRatio > canvasRatio) {
-                sw = img.height * canvasRatio
-                sx = (img.width - sw) / 2
-            } else {
-                sh = img.width / canvasRatio
-                sy = (img.height - sh) / 2
-            }
-            ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height)
-
-            const vignette = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, width / 1.5)
-            vignette.addColorStop(0, 'rgba(0,0,0,0)')
-            vignette.addColorStop(0.7, 'rgba(0,0,0,0.2)')
-            vignette.addColorStop(1, 'rgba(0,0,0,0.6)')
-            ctx.fillStyle = vignette
-            ctx.fillRect(0, 0, width, height)
-
-            const padding = width * 0.04
-            const nameFontSize = width * 0.045
-            const messageFontSize = width * 0.03
-            const lineHeight = messageFontSize * 1.4
-
-            function wrapText(text, maxWidth) {
-                const words = text.split(' ')
-                const lines = []
-                let line = ''
-                for (let word of words) {
-                    const testLine = line + word + ' '
-                    if (ctx.measureText(testLine).width > maxWidth && line !== '') {
-                        lines.push(line.trim())
-                        line = word + ' '
-                    } else {
-                        line = testLine
-                    }
+                if (cycleProgress < 0.25) {
+                    const t = cycleProgress / 0.25
+                    watermarkX = (width - watermarkSize - margin) * (1 - t)
+                    watermarkY = margin
+                } else if (cycleProgress < 0.5) {
+                    const t = (cycleProgress - 0.25) / 0.25
+                    watermarkX = margin
+                    watermarkY = margin + (height - watermarkSize - margin * 2) * t
+                } else if (cycleProgress < 0.75) {
+                    const t = (cycleProgress - 0.5) / 0.25
+                    watermarkX = margin + (width - watermarkSize - margin * 2) * t
+                    watermarkY = height - watermarkSize - margin
+                } else {
+                    const t = (cycleProgress - 0.75) / 0.25
+                    watermarkX = width - watermarkSize - margin
+                    watermarkY = height - watermarkSize - margin - (height - watermarkSize - margin * 2) * t
                 }
-                lines.push(line.trim())
-                return lines
+
+                const pulseScale = 1 + Math.sin(i * 0.15) * 0.08
+                const rotation = i * 0.03
+
+                ctx.save()
+                ctx.translate(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2)
+                ctx.rotate(rotation)
+                ctx.scale(pulseScale, pulseScale)
+                ctx.translate(-(watermarkX + watermarkSize / 2), -(watermarkY + watermarkSize / 2))
+
+                ctx.shadowColor = 'rgba(255, 105, 180, 0.6)'
+                ctx.shadowBlur = 12
+
+                ctx.beginPath()
+                ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, (watermarkSize / 2 + 10) * pulseScale, 0, Math.PI * 2)
+                ctx.strokeStyle = `rgba(255, 107, 157, 0.7)`
+                ctx.lineWidth = 2.5
+                ctx.stroke()
+
+                ctx.beginPath()
+                ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, watermarkSize / 2 + 6, 0, Math.PI * 2)
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
+                ctx.fill()
+
+                ctx.drawImage(appIcon, watermarkX, watermarkY, watermarkSize, watermarkSize)
+                ctx.restore()
             }
 
-            const msgLines = wrapText(slide.message, width * 0.7)
-            const barHeight = padding * 2 + nameFontSize + (msgLines.length * lineHeight) + padding
-            const barWidth = width * 0.8
-            const barX = (width - barWidth) / 2
-            const barY = height - barHeight - 40;
-            const radius = width * 0.02;
-
-            ctx.beginPath()
-            ctx.moveTo(barX + radius, barY)
-            ctx.lineTo(barX + barWidth - radius, barY)
-            ctx.quadraticCurveTo(barX + barWidth, barY, barX + barWidth, barY + radius)
-            ctx.lineTo(barX + barWidth, barY + barHeight - radius)
-            ctx.quadraticCurveTo(barX + barWidth, barY + barHeight, barX + barWidth - radius, barY + barHeight)
-            ctx.lineTo(barX + radius, barY + barHeight)
-            ctx.quadraticCurveTo(barX, barY + barHeight, barX, barY + barHeight - radius)
-            ctx.lineTo(barX, barY + radius)
-            ctx.quadraticCurveTo(barX, barY, barX + radius, barY)
-            ctx.closePath()
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.65)'
-            ctx.fill()
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'
-            ctx.lineWidth = 1.5
-            ctx.stroke()
-
-            const nameGrad = ctx.createLinearGradient(barX + 50, barY + padding, barX + barWidth - 50, barY + padding + nameFontSize)
-            nameGrad.addColorStop(0, '#f9c1d9')
-            nameGrad.addColorStop(1, '#ff6b9d')
-            ctx.fillStyle = nameGrad
-            ctx.font = `600 ${nameFontSize}px "Poppins", sans-serif`
-            ctx.shadowColor = 'rgba(0,0,0,0.5)'
-            ctx.shadowBlur = 8
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'top'
-            ctx.fillText(slide.name, width / 2, barY + padding)
-
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
-            ctx.font = `${messageFontSize}px "Poppins", sans-serif`
-            ctx.shadowBlur = 4
-            let yOffset = barY + padding + nameFontSize + 10
-            for (let line of msgLines) {
-                ctx.fillText(line, width / 2, yOffset)
-                yOffset += lineHeight
-            }
-
-            ctx.textAlign = 'right'
-            ctx.font = `bold ${width * 0.025}px "Poppins", sans-serif`
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
-            ctx.fillText(`${slideNumber}/${totalSlides}`, width - 20, 30)
-
-            ctx.textAlign = 'left'
-            ctx.font = `${width * 0.018}px "Poppins", sans-serif`
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'
-            ctx.fillText('Designed by KofiLartey', 20, height - 20)
-
-            ctx.shadowBlur = 0
+            ctx.globalAlpha = 1
             await new Promise(r => setTimeout(r, 1000 / fps))
         }
     }
@@ -1127,11 +1370,15 @@ function Slideshow() {
                 }
             }
 
+            let globalFrame = 0
+
             await renderIntro(ctx, width, height);
+            globalFrame += 120
             setRecordingProgress(10);
 
             for (let i = 0; i < slides.length; i++) {
-                await renderSlideForVideo(ctx, width, height, slides[i], i + 1, slides.length);
+                await renderSlideForVideo(ctx, width, height, slides[i], i + 1, slides.length, globalFrame);
+                globalFrame += 150
                 setRecordingProgress(10 + Math.round(((i + 1) / slides.length) * 80));
             }
 
@@ -1224,7 +1471,6 @@ function Slideshow() {
                         </svg>
                     )}
                 </button>
-                {/* Video Export Button */}
                 <button className="fab w-10 h-10 rounded-full bg-gray-800/80 backdrop-blur text-white flex items-center justify-center" onClick={exportVideo} disabled={isRecording} title="Export Video">
                     {isRecording ? (
                         <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
