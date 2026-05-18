@@ -97,6 +97,7 @@ function Dashboard() {
                 setUser(data)
 
                 // Update pending upgrade state based on fresh data
+                // IMPORTANT: Check if package_pending exists AND payment_status is still 'pending'
                 if (data.package_pending && data.payment_status === 'pending') {
                     setPendingUpgrade({
                         to_package_tier: data.package_pending,
@@ -104,6 +105,7 @@ function Dashboard() {
                     })
                     setPaymentPending(true)
                 } else {
+                    // Clear pending upgrade if approved or no pending
                     setPendingUpgrade(null)
                     setPaymentPending(false)
                 }
@@ -117,7 +119,7 @@ function Dashboard() {
         }
         return null
     }
-
+   
     // Polling effect - checks for package updates every 30 seconds
     useEffect(() => {
         if (!user?.id) return
@@ -137,6 +139,7 @@ function Dashboard() {
                     localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(freshUser))
                     setUser(freshUser)
 
+                    // IMPORTANT: Update pendingUpgrade based on fresh data
                     if (freshUser.package_pending && freshUser.payment_status === 'pending') {
                         setPendingUpgrade({
                             to_package_tier: freshUser.package_pending,
@@ -144,6 +147,7 @@ function Dashboard() {
                         })
                         setPaymentPending(true)
                     } else {
+                        // Clear pending upgrade when approved
                         setPendingUpgrade(null)
                         setPaymentPending(false)
                     }
