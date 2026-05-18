@@ -5,6 +5,7 @@ import { generatePaymentReference } from '../utils/paymentRef'
 
 const PAYMENT_NUMBER = '0531114795'
 const ADMIN_CONTACT = '0557655008'
+const ADMIN_WHATSAPP = '233557655008'
 
 const PACKAGE_NAMES = {
     free: 'Free',
@@ -19,12 +20,25 @@ function PaymentDetails() {
     const selectedPackageTier = searchParams.get('package') || 'basic'
     const price = searchParams.get('price') || '0'
     const currency = searchParams.get('currency') || 'GHS'
-    const selectedPackageId = Number.isInteger(Number(searchParams.get('packageId'))) ? Number(searchParams.get('packageId')) : null
-    
+    // Update this section where you get selectedPackageId
+    const selectedPackageId = (() => {
+        const id = Number(searchParams.get('packageId'))
+        // If packageId is valid and exists in packages (74-77), use it
+        if (Number.isInteger(id) && id >= 74 && id <= 77) {
+            return id
+        }
+        // Otherwise, map from package tier
+        const packageIdMap = {
+            free: 74,
+            basic: 75,
+            premium: 76,
+            enterprise: 77
+        }
+        return packageIdMap[selectedPackageTier] || 75
+    })()
+
     const [user, setUser] = useState(null)
-    const [paymentMethod, setPaymentMethod] = useState('momo')
     const [senderNumber, setSenderNumber] = useState('')
-    const [transactionId, setTransactionId] = useState('')
     const [amountPaid, setAmountPaid] = useState(price)
     const [notes, setNotes] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
@@ -41,11 +55,84 @@ function PaymentDetails() {
             return
         }
         setUser(currentUser)
-        
-        // Generate unique reference
+
         const refCode = generatePaymentReference(selectedPackageTier)
         setPaymentReference(refCode)
     }, [navigate, selectedPackageTier])
+
+    // Play notification sound
+    function playNotificationSound() {
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)()
+            const oscillator = audioContext.createOscillator()
+            const gainNode = audioContext.createGain()
+            oscillator.connect(gainNode)
+            gainNode.connect(audioContext.destination)
+            oscillator.frequency.value = 880
+            gainNode.gain.value = 0.15
+            oscillator.type = 'sine'
+            oscillator.start()
+            gainNode.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.3)
+            oscillator.stop(audioContext.currentTime + 0.3)
+            audioContext.resume().catch(e => console.log('Audio resume failed'))
+        } catch (err) {
+            console.log('Sound not supported')
+        }
+    }
+
+    // Create admin notification in Supabase
+    async function createAdminNotification(upgradeData, requestId) {
+        try {
+            const packageName = PACKAGE_NAMES[selectedPackageTier]
+            const message = `${upgradeData.user_name || upgradeData.user_email} requested upgrade to ${packageName}. Amount: ${currency === 'GHS' ? '₵' : '$'}${upgradeData.amount_paid}`
+
+            const { error } = await supabase
+                .from('admin_notifications')
+                .insert([{
+                    title: '💳 New Payment Request',
+                    message: message,
+                    type: 'payment',
+                    priority: 'high',
+                    related_id: requestId,
+                    related_table: 'upgrade_requests',
+                    is_read: false,
+                    created_at: new Date().toISOString()
+                }])
+
+            if (error) {
+                console.error('Error creating admin notification:', error)
+            } else {
+                console.log('✅ Admin notification created successfully')
+            }
+        } catch (err) {
+            console.log('Could not create admin notification:', err)
+        }
+    }
+
+    // Send WhatsApp notification
+    function sendWhatsAppNotification(upgradeData) {
+        const packageName = PACKAGE_NAMES[selectedPackageTier]
+        const message = `🚀 *NEW UPGRADE REQUEST* 🚀
+        
+👤 *User:* ${upgradeData.user_name}
+📧 *Email:* ${upgradeData.user_email}
+📱 *Phone:* ${upgradeData.momo_number || 'Not provided'}
+
+📦 *Package:* ${packageName}
+💰 *Amount:* ${currency === 'GHS' ? '₵' : '$'}${upgradeData.amount_paid}
+
+🔑 *Reference:* ${paymentReference}
+
+⏰ *Time:* ${new Date().toLocaleString()}
+
+➡️ *Approve here:* ${window.location.origin}/admin
+
+_This is an automated notification from HappyMoment_`
+
+        const encodedMessage = encodeURIComponent(message)
+        const whatsappUrl = `https://wa.me/${ADMIN_WHATSAPP}?text=${encodedMessage}`
+        window.open(whatsappUrl, '_blank')
+    }
 
     function validateForm() {
         if (!isPaid) {
@@ -53,11 +140,7 @@ function PaymentDetails() {
             return false
         }
         if (!senderNumber.trim()) {
-            setError('Please enter your sender mobile money number')
-            return false
-        }
-        if (!transactionId.trim()) {
-            setError('Please enter the transaction/reference ID from your payment confirmation')
+            setError('Please enter your mobile money number')
             return false
         }
         if (!amountPaid || parseFloat(amountPaid) <= 0) {
@@ -74,54 +157,64 @@ function PaymentDetails() {
         setIsSubmitting(true)
         setError('')
 
+        if (!user || !user.id) {
+            setError('User not logged in. Please log in again.')
+            setIsSubmitting(false)
+            return
+        }
+
         try {
-            // Create upgrade request with reference code
+            // Map package tier to correct package ID
+            const packageIdMap = {
+                free: 74,
+                basic: 75,
+                premium: 76,
+                enterprise: 77
+            }
+
+            const finalPackageId = packageIdMap[selectedPackageTier] || 75
+
+            const upgradeData = {
+                user_id: user.id,
+                user_email: user.email,
+                user_name: user.name || user.email,
+                from_package_tier: user.package_tier || 'free',
+                to_package_tier: selectedPackageTier,
+                to_package_id: finalPackageId,
+                amount_paid: parseFloat(amountPaid),
+                payment_method: 'momo',
+                momo_number: senderNumber,
+                payment_reference_code: paymentReference,
+                notes: notes || '',
+                status: 'pending',
+                created_at: new Date().toISOString()
+            }
+
+            console.log('📝 Inserting upgrade request:', upgradeData)
+
             const { error: insertError, data: insertedRequest } = await supabase
                 .from('upgrade_requests')
-                .insert([{
-                    user_id: user.id,
-                    user_email: user.email,
-                    user_name: user.name || user.email,
-                    from_package_tier: user.package_tier || 'free',
-                    to_package_tier: selectedPackageTier,
-                    to_package_id: selectedPackageId,
-                    amount_paid: parseFloat(amountPaid),
-                    currency: currency,
-                    payment_method: paymentMethod,
-                    sender_number: senderNumber,
-                    transaction_id: transactionId,
-                    payment_reference_code: paymentReference,
-                    notes: notes,
-                    status: 'pending'
-                }])
-                .select('id')
+                .insert([upgradeData])
+                .select()
 
             if (insertError) {
-                console.error('Upgrade request error:', insertError)
-                saveToLocalStorage()
-                setShowConfirmationCard(true)
+                console.error('❌ Insert error:', insertError)
+                setError(`Failed to submit: ${insertError.message}`)
+                setIsSubmitting(false)
                 return
             }
 
+            console.log('✅ Insert successful:', insertedRequest)
             const requestId = insertedRequest?.[0]?.id
 
-            // Update user's pending status
-            const updateData = {
-                package_pending: selectedPackageTier,
-                payment_status: 'pending',
-                payment_method: paymentMethod,
-                payment_reference: paymentReference,
-                payment_reference_code: paymentReference
-            }
-            
-            if (requestId) {
-                updateData.pending_upgrade_id = requestId
-            }
+            // ========== CREATE ADMIN NOTIFICATION ==========
+            await createAdminNotification(upgradeData, requestId)
 
-            await supabase
-                .from('users')
-                .update(updateData)
-                .eq('id', user.id)
+            // ========== SEND WHATSAPP NOTIFICATION ==========
+            sendWhatsAppNotification(upgradeData)
+
+            // ========== PLAY SOUND ==========
+            playNotificationSound()
 
             // Save to localStorage
             const paymentRecord = {
@@ -133,20 +226,20 @@ function PaymentDetails() {
                 package_name: PACKAGE_NAMES[selectedPackageTier],
                 amount: parseFloat(amountPaid),
                 currency: currency,
-                payment_method: paymentMethod,
-                sender_number: senderNumber,
+                payment_method: 'momo',
+                momo_number: senderNumber,
                 payment_reference_code: paymentReference,
-                transaction_id: transactionId,
                 status: 'pending',
                 created_at: new Date().toISOString()
             }
+
             const pendingPayments = JSON.parse(localStorage.getItem('pending_payments') || '[]')
             pendingPayments.push(paymentRecord)
             localStorage.setItem('pending_payments', JSON.stringify(pendingPayments))
 
-            // Update localStorage current user
             const updatedUser = {
                 ...user,
+                package_tier: 'free',
                 package_pending: selectedPackageTier,
                 payment_status: 'pending',
                 pending_upgrade_id: requestId
@@ -156,35 +249,11 @@ function PaymentDetails() {
             setShowConfirmationCard(true)
 
         } catch (err) {
-            console.error('Submission error:', err)
+            console.error('❌ Submission error:', err)
             setError('Failed to submit. Please try again.')
         } finally {
             setIsSubmitting(false)
         }
-    }
-
-    function saveToLocalStorage() {
-        const upgradeRequests = JSON.parse(localStorage.getItem('pending_upgrades') || '[]')
-        upgradeRequests.push({
-            id: `local-${Date.now()}`,
-            user_id: user.id,
-            user_email: user.email,
-            user_name: user.name || user.email,
-            from_package_tier: user.package_tier || 'free',
-            to_package_tier: selectedPackageTier,
-            to_package_id: selectedPackageId,
-            amount_paid: parseFloat(amountPaid),
-            currency: currency,
-            payment_method: paymentMethod,
-            sender_number: senderNumber,
-            transaction_id: transactionId,
-            payment_reference_code: paymentReference,
-            notes: notes,
-            status: 'pending',
-            created_at: new Date().toISOString(),
-            isLocalFallback: true
-        })
-        localStorage.setItem('pending_upgrades', JSON.stringify(upgradeRequests))
     }
 
     function goBack() {
@@ -199,12 +268,10 @@ function PaymentDetails() {
         )
     }
 
-    // Show confirmation card after submission
     if (showConfirmationCard) {
         return (
             <div className="min-h-screen p-4 bg-gradient-to-br from-slate-50 to-gray-50">
                 <div className="max-w-lg mx-auto pt-8 pb-16">
-                    {/* Success Header */}
                     <div className="text-center mb-8">
                         <div className="inline-flex items-center justify-center w-20 h-20 bg-green-100 rounded-full mb-4">
                             <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -213,18 +280,45 @@ function PaymentDetails() {
                         </div>
                         <h1 className="text-3xl font-bold text-slate-800 mb-2">Payment Request Submitted</h1>
                         <p className="text-slate-600">
-                            Your upgrade to <span className="font-semibold text-rose-600">{PACKAGE_NAMES[selectedPackageTier]}</span> is pending admin approval
+                            Your upgrade request to <span className="font-semibold text-rose-600">{PACKAGE_NAMES[selectedPackageTier]}</span> has been submitted
                         </p>
+                        <div className="mt-3 inline-block bg-amber-100 text-amber-800 px-4 py-2 rounded-full text-sm font-semibold">
+                            ⏳ Pending Admin Approval
+                        </div>
                     </div>
 
-                    {/* Payment Instruction Card */}
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-5 mb-6">
+                        <div className="flex items-start gap-3">
+                            <div className="text-2xl">📢</div>
+                            <div>
+                                <h3 className="font-bold text-green-800 mb-1">Admin Notified!</h3>
+                                <p className="text-sm text-green-700">
+                                    The administrator has been notified of your payment via WhatsApp.
+                                    You will be upgraded once your payment is confirmed.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 mb-6">
+                        <div className="flex items-start gap-3">
+                            <div className="text-2xl">📌</div>
+                            <div>
+                                <h3 className="font-bold text-blue-800 mb-1">Important Note</h3>
+                                <p className="text-sm text-blue-700">
+                                    Your account will remain on the <strong className="font-bold">FREE plan</strong> until an admin reviews and confirms your payment.
+                                    This usually takes 1-24 hours.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
                         <div className="bg-gradient-to-r from-slate-800 to-slate-900 px-6 py-4">
-                            <h2 className="text-white font-semibold text-lg">Payment Instructions</h2>
+                            <h2 className="text-white font-semibold text-lg">Payment Details</h2>
                         </div>
 
                         <div className="p-8 space-y-8">
-                            {/* Payment Number */}
                             <div className="text-center">
                                 <p className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">Pay To</p>
                                 <div className="bg-gradient-to-br from-slate-50 to-slate-100 border-2 border-slate-200 rounded-xl py-6 px-4">
@@ -235,63 +329,46 @@ function PaymentDetails() {
                                 <p className="text-xs text-slate-500 mt-2">Mobile Money (MTN / Vodafone / AirtelTigo)</p>
                             </div>
 
-                            {/* Divider */}
                             <div className="relative">
                                 <div className="absolute inset-0 flex items-center">
                                     <div className="w-full border-t border-slate-200"></div>
                                 </div>
                                 <div className="relative flex justify-center">
-                                    <span className="bg-white px-4 text-sm text-slate-500">Your Unique Reference</span>
+                                    <span className="bg-white px-4 text-sm text-slate-500">Your Reference</span>
                                 </div>
                             </div>
 
-                            {/* Reference Code */}
                             <div className="text-center">
                                 <p className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
-                                    Use this code as payment reference
+                                    Payment Reference
                                 </p>
                                 <div className="inline-block bg-slate-900 text-slate-50 py-5 px-10 rounded-xl shadow-lg">
                                     <div className="text-5xl md:text-6xl font-mono font-bold tracking-[0.2em] text-emerald-400">
                                         {paymentReference}
                                     </div>
                                 </div>
-                                <p className="text-sm text-slate-600 mt-4">
-                                    Copy this reference code and include it with your payment
-                                </p>
                             </div>
 
-                            {/* Payment Details Summary */}
                             <div className="bg-slate-50 rounded-xl p-5 space-y-3">
                                 <h3 className="font-semibold text-slate-700">Payment Summary</h3>
                                 <div className="flex justify-between text-sm">
-                                    <span className="text-slate-500">Sender Number:</span>
+                                    <span className="text-slate-500">Mobile Money Number:</span>
                                     <span className="font-mono font-semibold">{senderNumber}</span>
                                 </div>
                                 <div className="flex justify-between text-sm">
-                                    <span className="text-slate-500">Amount Paid:</span>
+                                    <span className="text-slate-500">Amount:</span>
                                     <span className="font-bold text-green-600">{currency === 'GHS' ? '₵' : '$'}{amountPaid}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-slate-500">Transaction ID:</span>
-                                    <span className="font-mono text-xs">{transactionId}</span>
                                 </div>
                                 <div className="flex justify-between text-sm">
                                     <span className="text-slate-500">Package:</span>
                                     <span className="font-semibold">{PACKAGE_NAMES[selectedPackageTier]}</span>
                                 </div>
-                            </div>
-
-                            {/* Divider */}
-                            <div className="relative">
-                                <div className="absolute inset-0 flex items-center">
-                                    <div className="w-full border-t border-slate-200"></div>
-                                </div>
-                                <div className="relative flex justify-center">
-                                    <span className="bg-white px-4 text-sm text-slate-500">Important</span>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">Status:</span>
+                                    <span className="font-semibold text-amber-600">Pending Approval</span>
                                 </div>
                             </div>
 
-                            {/* Alert Notice */}
                             <div className="bg-amber-50 border-l-4 border-amber-500 rounded-r-xl p-5">
                                 <div className="flex items-start gap-4">
                                     <div className="flex-shrink-0">
@@ -300,22 +377,15 @@ function PaymentDetails() {
                                         </svg>
                                     </div>
                                     <div className="flex-1">
-                                        <h3 className="font-bold text-amber-800 mb-1">No payment processed within 1 hour?</h3>
-                                        <p className="text-sm text-amber-700 leading-relaxed">
-                                            If your account is <strong>not activated within one hour</strong> after payment, please contact the administrator immediately.
+                                        <h3 className="font-bold text-amber-800 mb-1">No confirmation within 1 hour?</h3>
+                                        <p className="text-sm text-amber-700">
+                                            Contact admin: <span className="font-mono font-bold text-amber-900">{ADMIN_CONTACT}</span>
                                         </p>
-                                        <div className="mt-3 bg-white rounded-lg px-5 py-3 inline-block border border-amber-200 shadow-sm">
-                                            <p className="text-sm text-amber-800">
-                                                <span className="font-semibold">Admin Contact:</span>{' '}
-                                                <span className="font-mono text-lg font-bold text-amber-900">{ADMIN_CONTACT}</span>
-                                            </p>
-                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Footer */}
                         <div className="bg-slate-50 px-6 py-4 border-t border-slate-200">
                             <div className="flex flex-col sm:flex-row gap-3">
                                 <button
@@ -328,7 +398,7 @@ function PaymentDetails() {
                                     onClick={() => window.print()}
                                     className="flex-1 bg-white text-slate-700 border-2 border-slate-300 py-3 px-6 rounded-xl font-semibold hover:bg-slate-50 transition"
                                 >
-                                    Print / Save Receipt
+                                    Print Receipt
                                 </button>
                             </div>
                         </div>
@@ -342,8 +412,7 @@ function PaymentDetails() {
     return (
         <div className="min-h-screen p-4 bg-gradient-to-br from-slate-50 to-gray-50">
             <div className="max-w-2xl mx-auto pt-8">
-                {/* Back Button */}
-                <button 
+                <button
                     onClick={goBack}
                     className="mb-6 flex items-center gap-2 text-slate-600 hover:text-rose-600 transition font-medium"
                 >
@@ -354,51 +423,26 @@ function PaymentDetails() {
                 </button>
 
                 <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-8">
-                    {/* Header */}
                     <div className="text-center mb-10">
                         <div className="inline-flex items-center justify-center w-16 h-16 bg-slate-100 rounded-full mb-4">
                             <svg className="w-8 h-8 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                             </svg>
                         </div>
-                        <h1 className="text-2xl font-bold text-slate-800 mb-2">
-                            Complete Your Upgrade
-                        </h1>
+                        <h1 className="text-2xl font-bold text-slate-800 mb-2">Complete Your Upgrade</h1>
                         <p className="text-slate-600">
                             {PACKAGE_NAMES[selectedPackageTier]} Package • {currency === 'GHS' ? '₵' : '$'}{price}
                         </p>
+                        <div className="mt-2 inline-block bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-semibold">
+                            Current plan: FREE
+                        </div>
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-6">
-                        {/* Payment Method */}
-                        <div>
-                            <label className="block text-slate-700 font-semibold mb-3 text-sm">Payment Method</label>
-                            <div className="grid grid-cols-2 gap-4">
-                                <button
-                                    type="button"
-                                    onClick={() => setPaymentMethod('momo')}
-                                    className={`p-4 rounded-xl border-2 transition-all duration-200 ${paymentMethod === 'momo' ? 'border-indigo-500 bg-indigo-50 shadow-md' : 'border-slate-200 hover:border-slate-300'}`}
-                                >
-                                    <div className="text-2xl mb-2">📱</div>
-                                    <div className="font-semibold text-slate-700">Mobile Money</div>
-                                    <div className="text-xs text-slate-500">MTN/Vodafone/AirtelTigo</div>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setPaymentMethod('bank')}
-                                    className={`p-4 rounded-xl border-2 transition-all duration-200 ${paymentMethod === 'bank' ? 'border-indigo-500 bg-indigo-50 shadow-md' : 'border-slate-200 hover:border-slate-300'}`}
-                                >
-                                    <div className="text-2xl mb-2">🏦</div>
-                                    <div className="font-semibold text-slate-700">Bank Transfer</div>
-                                    <div className="text-xs text-slate-500">Direct deposit</div>
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Sender Number */}
+                        {/* Mobile Money Number */}
                         <div>
                             <label className="block text-slate-700 font-semibold mb-2 text-sm">
-                                Your Sender Number <span className="text-rose-600">*</span>
+                                Your Mobile Money Number <span className="text-rose-600">*</span>
                             </label>
                             <input
                                 type="tel"
@@ -408,30 +452,14 @@ function PaymentDetails() {
                                 className="w-full p-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-indigo-400 bg-white"
                                 required
                             />
-                            <p className="text-xs text-slate-500 mt-1">The mobile money number you used to send payment</p>
+                            <p className="text-xs text-slate-500 mt-1">The mobile money number you will use to send payment</p>
                         </div>
 
-                        {/* Transaction ID */}
-                        <div>
-                            <label className="block text-slate-700 font-semibold mb-2 text-sm">
-                                Transaction ID / Reference <span className="text-rose-600">*</span>
-                            </label>
-                            <input
-                                type="text"
-                                value={transactionId}
-                                onChange={(e) => setTransactionId(e.target.value)}
-                                placeholder="e.g., MTN-1234567890"
-                                className="w-full p-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-indigo-400 bg-white"
-                                required
-                            />
-                            <p className="text-xs text-slate-500 mt-1">From your payment confirmation message</p>
-                        </div>
-
-                        {/* Pay To Number - prominent display */}
+                        {/* Pay To Number */}
                         <div className="bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-indigo-200 rounded-xl p-6">
                             <div className="text-center">
                                 <p className="text-sm font-semibold text-indigo-700 uppercase tracking-wider mb-3">
-                                    ⚡ Send Payment To (Destination Number)
+                                    ⚡ Send Payment To
                                 </p>
                                 <div className="text-4xl md:text-5xl font-mono font-bold text-slate-800 tracking-wider mb-2">
                                     {PAYMENT_NUMBER}
@@ -445,7 +473,7 @@ function PaymentDetails() {
                         {/* Amount */}
                         <div>
                             <label className="block text-slate-700 font-semibold mb-2 text-sm">
-                                Amount Paid ({currency === 'GHS' ? 'GHS' : 'USD'}) <span className="text-rose-600">*</span>
+                                Amount to Pay ({currency === 'GHS' ? 'GHS' : 'USD'}) <span className="text-rose-600">*</span>
                             </label>
                             <input
                                 type="number"
@@ -458,10 +486,10 @@ function PaymentDetails() {
                             />
                         </div>
 
-                        {/* Unique Reference Code Display */}
+                        {/* Reference Code */}
                         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
                             <p className="text-sm text-slate-600 mb-2">
-                                <strong>Your Unique Payment Reference:</strong>
+                                <strong>Your Payment Reference:</strong>
                             </p>
                             <div className="bg-slate-900 text-slate-50 py-3 px-6 rounded-lg text-center font-mono font-bold tracking-widest text-2xl text-emerald-400">
                                 {paymentReference}
@@ -505,7 +533,6 @@ function PaymentDetails() {
                             </div>
                         )}
 
-                        {/* Submit Button */}
                         <button
                             type="submit"
                             disabled={isSubmitting}
@@ -517,20 +544,34 @@ function PaymentDetails() {
                                     Processing...
                                 </span>
                             ) : (
-                                'Submit Payment Confirmation'
+                                'Submit Payment & Notify Admin'
                             )}
                         </button>
 
-                        {/* Support Contact */}
+                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                            <div className="flex items-start gap-3">
+                                <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <div>
+                                    <p className="text-sm font-semibold text-blue-800">How it works:</p>
+                                    <p className="text-sm text-blue-700">
+                                        After submitting, the admin will be notified via WhatsApp.
+                                        Your account stays on the <strong>FREE plan</strong> until the admin confirms your payment.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
                         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                             <div className="flex items-start gap-3">
                                 <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
                                 <div>
-                                    <p className="text-sm font-semibold text-amber-800">No payment processed within 1 hour?</p>
+                                    <p className="text-sm font-semibold text-amber-800">Need help?</p>
                                     <p className="text-sm text-amber-700">
-                                        Contact admin immediately: <span className="font-mono font-bold text-amber-900">{ADMIN_CONTACT}</span>
+                                        Contact admin: <span className="font-mono font-bold text-amber-900">{ADMIN_CONTACT}</span>
                                     </p>
                                 </div>
                             </div>
@@ -538,7 +579,6 @@ function PaymentDetails() {
                     </form>
                 </div>
 
-                {/* Security Badge */}
                 <div className="mt-6 text-center">
                     <div className="inline-flex items-center gap-2 text-slate-500 text-xs">
                         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
