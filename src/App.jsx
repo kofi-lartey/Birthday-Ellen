@@ -27,6 +27,7 @@ import EditOtherEvent from './pages/EditOtherEvent'
 import CreateEvent from './pages/CreateEvent'
 import EditEvent from './pages/EditEvent'
 import EventView from './pages/EventView'
+import AuthCallback from './pages/AuthCallback'
 
 function ResetPassword() {
     const [password, setPassword] = useState('')
@@ -121,92 +122,6 @@ function ResetPassword() {
                         </button>
                     </form>
                 </div>
-            </div>
-        </div>
-    )
-}
-
-function AuthCallback() {
-    const navigate = useNavigate()
-    const [status, setStatus] = useState('loading')
-
-    useEffect(() => {
-        const handleAuth = async () => {
-            try {
-                const url = new URL(window.location.href)
-                const code = url.searchParams.get('code')
-                const hash = url.hash
-
-                if (code) {
-                    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
-
-                    if (error) {
-                        console.error('Auth callback error:', error)
-                        setStatus('error')
-                        return
-                    }
-
-                    if (data?.session) {
-                        const user = data.session.user
-                        const userData = {
-                            id: user.id,
-                            email: user.email,
-                            name: user.email.split('@')[0],
-                            role: 'user'
-                        }
-                        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(userData))
-                    }
-
-                    setStatus('success')
-                    return
-                }
-
-                if (hash && hash.includes('access_token')) {
-                    const { data: { session }, error } = await supabase.auth.getSession()
-
-                    if (error) {
-                        console.error('Auth callback error:', error)
-                        setStatus('error')
-                        return
-                    }
-
-                    if (session?.user) {
-                        const userData = {
-                            id: session.user.id,
-                            email: session.user.email,
-                            name: session.user.email.split('@')[0],
-                            role: 'user'
-                        }
-                        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(userData))
-                    }
-
-                    setStatus('success')
-                    return
-                }
-
-                setStatus('error')
-            } catch (err) {
-                console.error('Auth callback error:', err)
-                setStatus('error')
-            }
-        }
-
-        handleAuth()
-    }, [])
-
-    useEffect(() => {
-        if (status === 'success') {
-            navigate('/select-package', { replace: true })
-        } else if (status === 'error') {
-            navigate('/register', { replace: true })
-        }
-    }, [status, navigate])
-
-    return (
-        <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)' }}>
-            <div className="text-center">
-                <div className="text-4xl mb-4 animate-pulse">🎉</div>
-                <p className="text-gray-600">Confirming your account...</p>
             </div>
         </div>
     )

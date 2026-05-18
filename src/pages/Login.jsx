@@ -6,223 +6,238 @@ function Login() {
     const navigate = useNavigate()
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
+    const [otpCode, setOtpCode] = useState('')
+    const [showOtpInput, setShowOtpInput] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState('')
-    const [showForgotPassword, setShowForgotPassword] = useState(false)
-    const [resetEmail, setResetEmail] = useState('')
-    const [resetMessage, setResetMessage] = useState('')
+    const [countdown, setCountdown] = useState(0)
 
-    async function handleLogin(e) {
+    async function sendOTP() {
+        setError('')
+        setIsLoading(true)
+
+        try {
+            const { error } = await supabase.auth.signInWithOtp({
+                email: email.trim().toLowerCase(),
+            })
+
+            if (error) throw error
+            
+            setShowOtpInput(true)
+            startCountdown()
+            
+        } catch (err) {
+            setError(err.message || 'Failed to send code. Please try again.')
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    async function verifyOTP() {
+        setError('')
+        setIsLoading(true)
+
+        try {
+            const { data, error } = await supabase.auth.verifyOtp({
+                email: email.trim().toLowerCase(),
+                token: otpCode,
+                type: 'email'
+            })
+
+            if (error) throw error
+
+            if (data?.user) {
+                // Get user profile
+                const { data: profile } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('id', data.user.id)
+                    .single()
+
+                localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify({
+                    id: data.user.id,
+                    email: data.user.email,
+                    name: profile?.name || data.user.user_metadata?.full_name,
+                    role: profile?.role || 'user',
+                    package_tier: profile?.package_tier
+                }))
+
+                navigate('/dashboard')
+            }
+
+        } catch (err) {
+            setError('Invalid or expired code. Please try again.')
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    async function handlePasswordLogin(e) {
         e.preventDefault()
         setError('')
         setIsLoading(true)
 
         try {
-            // Login with Supabase Auth
-            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+            const { data, error } = await supabase.auth.signInWithPassword({
                 email: email.trim().toLowerCase(),
                 password: password
             })
 
-            if (authError) {
-                if (authError.message.includes('429') || authError.message.includes('rate limit')) {
-                    setError('Too many requests. Please wait a moment and try again.')
-                } else if (authError.message.includes('Email not confirmed')) {
-                    setError('Please confirm your email address before logging in. Check your inbox for the confirmation link.')
-                } else {
-                    setError('Invalid email or password')
-                }
-                setIsLoading(false)
-                return
-            }
+            if (error) throw error
 
-            // Get user profile from users table
-            if (authData.user) {
-                const { data: userData, error: userError } = await supabase
+            if (data?.user) {
+                const { data: profile } = await supabase
                     .from('users')
                     .select('*')
-                    .eq('id', authData.user.id)
+                    .eq('id', data.user.id)
                     .single()
 
-                console.log('Login - User data from Supabase:', userData)
+                localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify({
+                    id: data.user.id,
+                    email: data.user.email,
+                    name: profile?.name,
+                    role: profile?.role || 'user',
+                    package_tier: profile?.package_tier
+                }))
 
-                const user = userData || {
-                    id: authData.user.id,
-                    email: authData.user.email,
-                    role: 'user',
-                    name: authData.user.email.split('@')[0]
-                }
-
-                console.log('Login - Final user object:', user)
-
-                // Save current user
-                localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user))
-                setIsLoading(false)
-
-                // Check if user needs to select a package
-                if (!user.package_tier) {
-                    navigate('/select-package')
-                    return
-                }
-
-                // Check if admin
-                if (user.role === 'admin' || user.role === 'super_admin') {
-                    navigate('/admin')
-                } else {
-                    navigate('/dashboard')
-                }
-                return
+                navigate('/dashboard')
             }
 
-            setError('Login failed. Please try again.')
-            setIsLoading(false)
-
         } catch (err) {
-            console.error('Login error:', err)
-            setError('An error occurred. Please try again.')
+            setError(err.message || 'Invalid email or password')
+        } finally {
             setIsLoading(false)
         }
     }
 
-    async function handleForgotPassword(e) {
-        e.preventDefault()
-        setResetMessage('')
-
-        const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.trim().toLowerCase(), {
-            redirectTo: 'https://birthdaymoment.netlify.app/reset-password'
-        })
-
-        if (error) {
-            setResetMessage('Error: ' + error.message)
-        } else {
-            setResetMessage('Password reset link has been sent to your email!')
-        }
+    function startCountdown() {
+        setCountdown(60)
+        const timer = setInterval(() => {
+            setCountdown(prev => {
+                if (prev <= 1) {
+                    clearInterval(timer)
+                    return 0
+                }
+                return prev - 1
+            })
+        }, 1000)
     }
 
     return (
         <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)' }}>
-            {/* Back Link */}
-            <Link
-                to="/"
+            <button
+                onClick={() => navigate(-1)}
                 className="fixed top-4 left-4 bg-white/80 text-rose-500 px-4 py-2 rounded-full text-sm hover:bg-rose-100 transition shadow-lg"
             >
                 ← Back
-            </Link>
+            </button>
 
             <div className="max-w-md w-full">
                 <div className="bg-white rounded-3xl shadow-2xl p-8">
-                    <div className="text-center mb-8">
-                        <div className="text-6xl mb-4">🔐</div>
-                        <h1 className="text-3xl font-['Dancing_Script'] text-rose-500">Welcome Back</h1>
-                        <p className="text-gray-500 mt-2">Login to your account</p>
-                    </div>
+                    {showOtpInput ? (
+                        <div className="text-center">
+                            <div className="text-6xl mb-4">🔐</div>
+                            <h2 className="text-2xl font-bold text-gray-700 mb-3">Verify Your Email</h2>
+                            <p className="text-gray-600 mb-4">Enter the code sent to:</p>
+                            <p className="text-rose-600 font-semibold mb-6">{email}</p>
+                            
+                            <input
+                                type="text"
+                                value={otpCode}
+                                onChange={(e) => setOtpCode(e.target.value)}
+                                placeholder="Enter 6-digit code"
+                                maxLength="6"
+                                className="w-full p-3 border-2 border-rose-200 rounded-xl text-center text-2xl tracking-widest mb-4"
+                            />
 
-                    <form onSubmit={handleLogin}>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-gray-600 mb-2">Email or Phone</label>
-                                <input
-                                    type="text"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    required
-                                    className="w-full p-3 border-2 border-rose-200 rounded-xl focus:outline-none focus:border-rose-400"
-                                    placeholder="your@email.com or phone"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-gray-600 mb-2">Password</label>
-                                <input
-                                    type="password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    required
-                                    className="w-full p-3 border-2 border-rose-200 rounded-xl focus:outline-none focus:border-rose-400"
-                                    placeholder="Your password"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowForgotPassword(true)}
-                                    className="text-rose-500 text-sm mt-1 hover:text-rose-600"
-                                >
-                                    Forgot Password?
-                                </button>
-                            </div>
+                            <button
+                                onClick={verifyOTP}
+                                disabled={isLoading || otpCode.length !== 6}
+                                className="w-full bg-gradient-to-r from-rose-500 to-pink-500 text-white py-3 rounded-xl font-semibold mb-3"
+                            >
+                                Verify & Login
+                            </button>
+                            
+                            <button
+                                onClick={sendOTP}
+                                disabled={countdown > 0}
+                                className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-semibold"
+                            >
+                                {countdown > 0 ? `Resend in ${countdown}s` : 'Resend Code'}
+                            </button>
                         </div>
-
-                        {error && (
-                            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
-                                {error}
+                    ) : (
+                        <>
+                            <div className="text-center mb-8">
+                                <div className="text-6xl mb-4">🎉</div>
+                                <h1 className="text-3xl font-['Dancing_Script'] text-rose-500">Welcome Back</h1>
+                                <p className="text-gray-500 mt-2">Login to your account</p>
                             </div>
-                        )}
 
-                        <button
-                            type="submit"
-                            disabled={isLoading}
-                            className="w-full mt-6 bg-gradient-to-r from-rose-500 to-pink-500 text-white py-4 rounded-xl font-semibold hover:shadow-lg transition disabled:opacity-50"
-                        >
-                            {isLoading ? 'Logging in...' : 'Login'}
-                        </button>
-                    </form>
+                            <form onSubmit={handlePasswordLogin}>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-gray-600 mb-2">Email</label>
+                                        <input
+                                            type="email"
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value)}
+                                            required
+                                            className="w-full p-3 border-2 border-rose-200 rounded-xl focus:outline-none focus:border-rose-400"
+                                            placeholder="your@email.com"
+                                        />
+                                    </div>
 
-                    <div className="mt-6 text-center">
-                        <p className="text-gray-500">
-                            Don't have an account?{' '}
-                            <Link to="/register" className="text-rose-500 font-semibold">
-                                Register
-                            </Link>
-                        </p>
-                    </div>
-                </div>
-
-                {/* Forgot Password Modal */}
-                {showForgotPassword && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                        <div className="bg-white rounded-3xl p-6 max-w-md w-full">
-                            <h3 className="text-xl font-bold text-gray-700 mb-4">Reset Password</h3>
-                            <p className="text-gray-500 text-sm mb-4">
-                                Enter your email address and we'll send you a link to reset your password.
-                            </p>
-
-                            <form onSubmit={handleForgotPassword}>
-                                <div className="mb-4">
-                                    <label className="block text-gray-600 mb-2">Email Address</label>
-                                    <input
-                                        type="email"
-                                        value={resetEmail}
-                                        onChange={(e) => setResetEmail(e.target.value)}
-                                        required
-                                        className="w-full p-3 border-2 border-rose-200 rounded-xl focus:outline-none focus:border-rose-400"
-                                        placeholder="your@email.com"
-                                    />
+                                    <div>
+                                        <label className="block text-gray-600 mb-2">Password</label>
+                                        <input
+                                            type="password"
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            className="w-full p-3 border-2 border-rose-200 rounded-xl focus:outline-none focus:border-rose-400"
+                                            placeholder="Enter your password"
+                                        />
+                                    </div>
                                 </div>
 
-                                {resetMessage && (
-                                    <div className={`mb-4 p-3 rounded-xl text-sm ${resetMessage.includes('sent') ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
-                                        {resetMessage}
+                                {error && (
+                                    <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+                                        {error}
                                     </div>
                                 )}
 
-                                <div className="flex gap-3">
-                                    <button
-                                        type="submit"
-                                        className="flex-1 bg-rose-500 text-white py-3 rounded-xl font-semibold"
-                                    >
-                                        Send Reset Link
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => { setShowForgotPassword(false); setResetMessage(''); }}
-                                        className="px-6 bg-gray-200 text-gray-600 py-3 rounded-xl font-semibold"
-                                    >
-                                        Cancel
-                                    </button>
-                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={isLoading}
+                                    className="w-full mt-6 bg-gradient-to-r from-rose-500 to-pink-500 text-white py-4 rounded-xl font-semibold"
+                                >
+                                    {isLoading ? 'Logging in...' : 'Login'}
+                                </button>
                             </form>
-                        </div>
-                    </div>
-                )}
+
+                            <div className="mt-4 text-center">
+                                <button
+                                    onClick={sendOTP}
+                                    className="text-rose-500 text-sm hover:underline"
+                                >
+                                    Login with One-Time Code instead
+                                </button>
+                            </div>
+
+                            <div className="mt-6 text-center">
+                                <p className="text-gray-500">
+                                    Don't have an account?{' '}
+                                    <Link to="/register" className="text-rose-500 font-semibold">
+                                        Create Account
+                                    </Link>
+                                </p>
+                                <Link to="/forgot-password" className="text-gray-400 text-sm hover:text-rose-500 mt-2 inline-block">
+                                    Forgot Password?
+                                </Link>
+                            </div>
+                        </>
+                    )}
+                </div>
             </div>
         </div>
     )

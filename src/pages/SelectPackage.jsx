@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, STORAGE_KEYS } from '../supabase'
 
-// Default packages with allowed event types
+// Default packages kept same for logic, UI updated in render
 const defaultPackages = [
     {
         id: 1,
@@ -20,7 +20,7 @@ const defaultPackages = [
         max_photos_per_page: 5,
         allow_custom_domain: false,
         allow_analytics: false,
-        allowed_event_types: ['birthday'], // Only birthday events
+        allowed_event_types: ['birthday'],
         buttonClass: 'bg-gray-100 text-gray-700 hover:bg-gray-200'
     },
     {
@@ -39,7 +39,7 @@ const defaultPackages = [
         max_photos_per_page: 15,
         allow_custom_domain: false,
         allow_analytics: false,
-        allowed_event_types: ['birthday', 'wedding'], // Birthday + Wedding
+        allowed_event_types: ['birthday', 'wedding'],
         buttonClass: 'bg-blue-600 text-white hover:bg-blue-700'
     },
     {
@@ -58,7 +58,7 @@ const defaultPackages = [
         max_photos_per_page: 50,
         allow_custom_domain: false,
         allow_analytics: true,
-        allowed_event_types: ['birthday', 'wedding', 'anniversary', 'party'], // 4 event types
+        allowed_event_types: ['birthday', 'wedding', 'anniversary', 'party'],
         buttonClass: 'bg-indigo-600 text-white hover:bg-indigo-700'
     },
     {
@@ -77,7 +77,7 @@ const defaultPackages = [
         max_photos_per_page: 999999,
         allow_custom_domain: true,
         allow_analytics: true,
-        allowed_event_types: ['birthday', 'wedding', 'anniversary', 'party', 'hangout', 'other'], // All 6 event types
+        allowed_event_types: ['birthday', 'wedding', 'anniversary', 'party', 'hangout', 'other'],
         buttonClass: 'bg-purple-600 text-white hover:bg-purple-700'
     }
 ]
@@ -87,6 +87,7 @@ function SelectPackage() {
     const [packages, setPackages] = useState(defaultPackages)
     const [selectedPackage, setSelectedPackage] = useState(null)
     const [isLoading, setIsLoading] = useState(false)
+    const [isVerifying, setIsVerifying] = useState(true)
     const [error, setError] = useState('')
     const [user, setUser] = useState(null)
     const [billingCycle, setBillingCycle] = useState('monthly')
@@ -94,15 +95,41 @@ function SelectPackage() {
     const [currency, setCurrency] = useState('USD')
 
     useEffect(() => {
-        const checkUser = () => {
-            const currentUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER) || 'null')
-            if (!currentUser) {
-                navigate('/register')
-                return
+        const checkUser = async () => {
+            setIsVerifying(true)
+
+            try {
+                const currentUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER) || 'null')
+
+                if (!currentUser) {
+                    navigate('/register')
+                    return
+                }
+
+                // Check if user has a valid session
+                const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+
+                if (sessionError || !session?.user) {
+                    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER)
+                    navigate('/login')
+                    return
+                }
+
+                // User is authenticated (OTP already verified during registration)
+                setUser(currentUser)
+                loadPackages()
+
+            } catch (err) {
+                console.error('Error:', err)
+                setError('Failed to verify your account. Please try again.')
+                setTimeout(() => {
+                    navigate('/login')
+                }, 2000)
+            } finally {
+                setIsVerifying(false)
             }
-            setUser(currentUser)
-            loadPackages()
         }
+
         checkUser()
     }, [navigate])
 
@@ -115,10 +142,20 @@ function SelectPackage() {
                 .order('display_order')
 
             if (data && data.length > 0) {
-                const enriched = data.map(dbPkg => ({
-                    ...dbPkg,
-                    ...defaultPackages.find(d => d.tier === dbPkg.tier)
-                }))
+                // Map database packages to include allowed_event_types
+                const enriched = data.map(dbPkg => {
+                    // Determine allowed event types based on package tier
+                    let allowedTypes = ['birthday']
+                    if (dbPkg.tier === 'basic') allowedTypes = ['birthday', 'wedding']
+                    else if (dbPkg.tier === 'premium') allowedTypes = ['birthday', 'wedding', 'anniversary', 'party']
+                    else if (dbPkg.tier === 'enterprise') allowedTypes = ['birthday', 'wedding', 'anniversary', 'party', 'hangout', 'other']
+
+                    return {
+                        ...dbPkg,
+                        ...defaultPackages.find(d => d.tier === dbPkg.tier),
+                        allowed_event_types: allowedTypes
+                    }
+                })
                 setPackages(enriched)
             }
         } catch (err) {
@@ -162,12 +199,15 @@ function SelectPackage() {
                 return
             }
 
-            // Store package info in localStorage for create event page to check
+            // Store selected package info
             localStorage.setItem('selected_package', JSON.stringify({
                 tier: pkg.tier,
                 allowed_event_types: pkg.allowed_event_types,
                 max_pages: pkg.max_pages,
-                max_photos_per_page: pkg.max_photos_per_page
+                max_photos_per_page: pkg.max_photos_per_page,
+                price: getPrice(pkg),
+                currency: currency,
+                billing_cycle: billingCycle
             }))
 
             const updatedUser = {
@@ -193,13 +233,11 @@ function SelectPackage() {
         } catch (err) {
             console.error('Package selection error:', err)
             setError('Failed to process selection. Please try again.')
+            setIsLoading(false)
         }
-
-        setIsLoading(false)
     }
 
     async function activateFreePackage(pkg) {
-        // Store package info for create event page
         localStorage.setItem('selected_package', JSON.stringify({
             tier: pkg.tier,
             allowed_event_types: pkg.allowed_event_types,
@@ -241,7 +279,6 @@ function SelectPackage() {
         navigate('/dashboard')
     }
 
-    // Get event type display name
     const getEventTypeName = (type) => {
         const names = {
             birthday: '🎂 Birthday',
@@ -254,10 +291,22 @@ function SelectPackage() {
         return names[type] || type
     }
 
+    // Show loading state while verifying
+    if (isVerifying) {
+        return (
+            <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)' }}>
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-rose-500 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Verifying your account...</p>
+                </div>
+            </div>
+        )
+    }
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
-                
+
                 {/* Back Navigation Button */}
                 <div className="mb-8">
                     <button
@@ -280,28 +329,26 @@ function SelectPackage() {
                         Choose Your Perfect Plan
                     </h1>
                     <p className="text-lg text-slate-600 leading-relaxed">
-                        Start with our free plan and upgrade as you grow. No hidden fees, cancel anytime.
+                        Welcome! Select a package to start creating memorable events.
                     </p>
 
                     {/* Currency Toggle */}
                     <div className="mt-8 flex items-center justify-center gap-3">
                         <button
                             onClick={() => setCurrency('USD')}
-                            className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${
-                                currency === 'USD' 
-                                    ? 'bg-indigo-600 text-white shadow-md' 
+                            className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${currency === 'USD'
+                                    ? 'bg-indigo-600 text-white shadow-md'
                                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                            }`}
+                                }`}
                         >
                             🇺🇸 USD
                         </button>
                         <button
                             onClick={() => setCurrency('GHS')}
-                            className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${
-                                currency === 'GHS' 
-                                    ? 'bg-indigo-600 text-white shadow-md' 
+                            className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${currency === 'GHS'
+                                    ? 'bg-indigo-600 text-white shadow-md'
                                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                            }`}
+                                }`}
                         >
                             🇬🇭 GHS (₵)
                         </button>
@@ -312,7 +359,7 @@ function SelectPackage() {
                         <span className={`text-sm font-medium transition-colors ${billingCycle === 'monthly' ? 'text-slate-900' : 'text-slate-400'}`}>
                             Monthly
                         </span>
-                        <button 
+                        <button
                             onClick={() => setBillingCycle(prev => prev === 'monthly' ? 'yearly' : 'monthly')}
                             className="relative w-14 h-7 bg-slate-200 rounded-full p-1 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
                         >
@@ -335,21 +382,18 @@ function SelectPackage() {
                         const yearlySavings = getYearlySavings(pkg)
                         const isHovered = hoveredCard === pkg.id
                         const displayPrice = getFormattedPrice(pkg)
-                        
+
                         return (
-                            <div 
+                            <div
                                 key={pkg.id}
                                 onMouseEnter={() => setHoveredCard(pkg.id)}
                                 onMouseLeave={() => setHoveredCard(null)}
-                                className={`relative rounded-2xl bg-white border-2 transition-all duration-300 transform ${
-                                    isHovered ? 'scale-105 shadow-2xl' : 'shadow-lg'
-                                } ${
-                                    isPopular 
-                                        ? 'border-indigo-500 ring-2 ring-indigo-200' 
+                                className={`relative rounded-2xl bg-white border-2 transition-all duration-300 transform ${isHovered ? 'scale-105 shadow-2xl' : 'shadow-lg'
+                                    } ${isPopular
+                                        ? 'border-indigo-500 ring-2 ring-indigo-200'
                                         : 'border-slate-200'
-                                }`}
+                                    }`}
                             >
-                                {/* Popular Badge */}
                                 {isPopular && (
                                     <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
                                         <span className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white text-xs font-bold uppercase tracking-wider px-4 py-1.5 rounded-full shadow-lg">
@@ -358,7 +402,6 @@ function SelectPackage() {
                                     </div>
                                 )}
 
-                                {/* Current Plan Badge */}
                                 {isCurrent && (
                                     <div className="absolute top-4 right-4">
                                         <span className="bg-green-100 text-green-700 text-xs font-semibold px-2 py-1 rounded-full">
@@ -368,7 +411,6 @@ function SelectPackage() {
                                 )}
 
                                 <div className="p-6">
-                                    {/* Icon & Name */}
                                     <div className="flex items-center justify-between mb-6">
                                         <div className="text-5xl">{pkg.icon}</div>
                                         {yearlySavings && billingCycle === 'yearly' && (
@@ -377,11 +419,10 @@ function SelectPackage() {
                                             </div>
                                         )}
                                     </div>
-                                    
+
                                     <h3 className="text-2xl font-bold text-slate-900 mb-2">{pkg.name}</h3>
                                     <p className="text-slate-500 text-sm mb-4">{pkg.description}</p>
-                                    
-                                    {/* Price */}
+
                                     <div className="mb-6">
                                         <div className="flex items-baseline gap-1">
                                             <span className="text-4xl font-extrabold text-slate-900">
@@ -401,7 +442,6 @@ function SelectPackage() {
                                         )}
                                     </div>
 
-                                    {/* Allowed Event Types Badges */}
                                     <div className="mb-6">
                                         <p className="text-xs font-semibold text-slate-500 mb-2">INCLUDES:</p>
                                         <div className="flex flex-wrap gap-1.5">
@@ -413,7 +453,6 @@ function SelectPackage() {
                                         </div>
                                     </div>
 
-                                    {/* Features List */}
                                     <div className="space-y-3 mb-8">
                                         <div className="flex items-center gap-2 text-sm">
                                             <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -445,17 +484,15 @@ function SelectPackage() {
                                         )}
                                     </div>
 
-                                    {/* CTA Button */}
                                     <button
                                         onClick={() => handleSelectPackage(pkg)}
                                         disabled={isCurrent || isLoading}
-                                        className={`w-full py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
-                                            isCurrent 
+                                        className={`w-full py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${isCurrent
                                                 ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                                                 : pkg.tier === 'free'
                                                     ? 'bg-slate-900 text-white hover:bg-slate-800'
                                                     : pkg.buttonClass
-                                        } ${!isCurrent && 'hover:shadow-lg transform hover:-translate-y-0.5'}`}
+                                            } ${!isCurrent && 'hover:shadow-lg transform hover:-translate-y-0.5'}`}
                                     >
                                         {isLoading && selectedPackage?.id === pkg.id ? (
                                             <div className="flex items-center justify-center gap-2">
@@ -498,13 +535,12 @@ function SelectPackage() {
                             <span className="text-sm">14-day money back</span>
                         </div>
                     </div>
-                    
+
                     <p className="text-slate-400 text-sm">
                         Need a custom plan? <button className="text-indigo-600 hover:text-indigo-700 font-medium">Contact our sales team</button>
                     </p>
                 </div>
 
-                {/* Error Toast */}
                 {error && (
                     <div className="fixed bottom-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg animate-bounce">
                         {error}
