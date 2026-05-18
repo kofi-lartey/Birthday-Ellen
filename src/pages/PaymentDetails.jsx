@@ -20,14 +20,13 @@ function PaymentDetails() {
     const selectedPackageTier = searchParams.get('package') || 'basic'
     const price = searchParams.get('price') || '0'
     const currency = searchParams.get('currency') || 'GHS'
-    // Update this section where you get selectedPackageId
+    
+    // Map package tier to correct package ID
     const selectedPackageId = (() => {
         const id = Number(searchParams.get('packageId'))
-        // If packageId is valid and exists in packages (74-77), use it
         if (Number.isInteger(id) && id >= 74 && id <= 77) {
             return id
         }
-        // Otherwise, map from package tier
         const packageIdMap = {
             free: 74,
             basic: 75,
@@ -46,19 +45,20 @@ function PaymentDetails() {
     const [paymentReference, setPaymentReference] = useState('')
     const [showConfirmationCard, setShowConfirmationCard] = useState(false)
     const [isPaid, setIsPaid] = useState(false)
+    const [userCurrentPackage, setUserCurrentPackage] = useState('free')
 
-    // Generate unique reference code on mount
+    // Load user and get current package
     useEffect(() => {
         const loadUser = async () => {
-            // Get the session from Supabase Auth (this is the source of truth)
+            // Get session from Supabase Auth
             const { data: { session } } = await supabase.auth.getSession()
-
+            
             if (!session?.user) {
                 navigate('/login')
                 return
             }
 
-            // Get the user profile from your users table
+            // Get user profile from users table
             const { data: userProfile, error: profileError } = await supabase
                 .from('users')
                 .select('*')
@@ -71,23 +71,23 @@ function PaymentDetails() {
                 return
             }
 
-            // Create user object with correct ID from the session
+            // Set user with current package
             const currentUser = {
-                id: session.user.id,  // This is the correct UUID from Supabase Auth
+                id: session.user.id,
                 email: session.user.email,
                 name: userProfile.name,
                 package_tier: userProfile.package_tier || 'free',
-                role: userProfile.role || 'user',
+                payment_status: userProfile.payment_status,
                 ...userProfile
             }
-
+            
             setUser(currentUser)
-
+            setUserCurrentPackage(userProfile.package_tier || 'free')
+            
             // Update localStorage with correct data
             localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(currentUser))
 
-            console.log('✅ User ID from session:', currentUser.id)
-            console.log('✅ User email:', currentUser.email)
+            console.log('Current user package:', userProfile.package_tier)
         }
 
         loadUser()
@@ -95,6 +95,12 @@ function PaymentDetails() {
         const refCode = generatePaymentReference(selectedPackageTier)
         setPaymentReference(refCode)
     }, [navigate, selectedPackageTier])
+
+    // Get current package display name
+    const getCurrentPackageDisplay = () => {
+        const packageName = PACKAGE_NAMES[userCurrentPackage] || 'Free'
+        return packageName
+    }
 
     // Play notification sound
     function playNotificationSound() {
@@ -120,7 +126,7 @@ function PaymentDetails() {
     async function createAdminNotification(upgradeData, requestId) {
         try {
             const packageName = PACKAGE_NAMES[selectedPackageTier]
-            const message = `${upgradeData.user_name || upgradeData.user_email} requested upgrade to ${packageName}. Amount: ${currency === 'GHS' ? '₵' : '$'}${upgradeData.amount_paid}`
+            const message = `${upgradeData.user_name || upgradeData.user_email} requested upgrade from ${getCurrentPackageDisplay()} to ${packageName}. Amount: ${currency === 'GHS' ? '₵' : '$'}${upgradeData.amount_paid}`
 
             const { error } = await supabase
                 .from('admin_notifications')
@@ -154,7 +160,8 @@ function PaymentDetails() {
 📧 *Email:* ${upgradeData.user_email}
 📱 *Phone:* ${upgradeData.momo_number || 'Not provided'}
 
-📦 *Package:* ${packageName}
+📦 *Current Package:* ${getCurrentPackageDisplay()}
+📦 *Requested Package:* ${packageName}
 💰 *Amount:* ${currency === 'GHS' ? '₵' : '$'}${upgradeData.amount_paid}
 
 🔑 *Reference:* ${paymentReference}
@@ -199,22 +206,7 @@ _This is an automated notification from HappyMoment_`
             return
         }
 
-        // Verify the user ID exists in the users table
-        const { data: verifyUser, error: verifyError } = await supabase
-            .from('users')
-            .select('id')
-            .eq('id', user.id)
-            .single()
-
-        if (verifyError || !verifyUser) {
-            console.error('Invalid user ID:', user.id)
-            setError('Session expired. Please log out and log in again.')
-            setIsSubmitting(false)
-            return
-        }
-
         try {
-            // Map package tier to correct package ID
             const packageIdMap = {
                 free: 74,
                 basic: 75,
@@ -225,7 +217,7 @@ _This is an automated notification from HappyMoment_`
             const finalPackageId = packageIdMap[selectedPackageTier] || 75
 
             const upgradeData = {
-                user_id: user.id,  // This is now verified to be correct
+                user_id: user.id,
                 user_email: user.email,
                 user_name: user.name || user.email,
                 from_package_tier: user.package_tier || 'free',
@@ -240,8 +232,7 @@ _This is an automated notification from HappyMoment_`
                 created_at: new Date().toISOString()
             }
 
-            console.log('📝 Inserting upgrade request with user_id:', user.id)
-            console.log('📝 Full upgrade data:', upgradeData)
+            console.log('📝 Inserting upgrade request:', upgradeData)
 
             const { error: insertError, data: insertedRequest } = await supabase
                 .from('upgrade_requests')
@@ -258,13 +249,13 @@ _This is an automated notification from HappyMoment_`
             console.log('✅ Insert successful:', insertedRequest)
             const requestId = insertedRequest?.[0]?.id
 
-            // ========== CREATE ADMIN NOTIFICATION ==========
+            // Create admin notification
             await createAdminNotification(upgradeData, requestId)
-
-            // ========== SEND WHATSAPP NOTIFICATION ==========
+            
+            // Send WhatsApp notification
             sendWhatsAppNotification(upgradeData)
-
-            // ========== PLAY SOUND ==========
+            
+            // Play sound
             playNotificationSound()
 
             // Save to localStorage
@@ -290,7 +281,7 @@ _This is an automated notification from HappyMoment_`
 
             const updatedUser = {
                 ...user,
-                package_tier: 'free',
+                package_tier: userCurrentPackage, // Keep current package
                 package_pending: selectedPackageTier,
                 payment_status: 'pending',
                 pending_upgrade_id: requestId
@@ -331,7 +322,7 @@ _This is an automated notification from HappyMoment_`
                         </div>
                         <h1 className="text-3xl font-bold text-slate-800 mb-2">Payment Request Submitted</h1>
                         <p className="text-slate-600">
-                            Your upgrade request to <span className="font-semibold text-rose-600">{PACKAGE_NAMES[selectedPackageTier]}</span> has been submitted
+                            Your upgrade request from <span className="font-semibold text-blue-600">{getCurrentPackageDisplay()}</span> to <span className="font-semibold text-rose-600">{PACKAGE_NAMES[selectedPackageTier]}</span> has been submitted
                         </p>
                         <div className="mt-3 inline-block bg-amber-100 text-amber-800 px-4 py-2 rounded-full text-sm font-semibold">
                             ⏳ Pending Admin Approval
@@ -357,7 +348,7 @@ _This is an automated notification from HappyMoment_`
                             <div>
                                 <h3 className="font-bold text-blue-800 mb-1">Important Note</h3>
                                 <p className="text-sm text-blue-700">
-                                    Your account will remain on the <strong className="font-bold">FREE plan</strong> until an admin reviews and confirms your payment.
+                                    Your account will remain on the <strong className="font-bold">{getCurrentPackageDisplay()} plan</strong> until an admin reviews and confirms your payment.
                                     This usually takes 1-24 hours.
                                 </p>
                             </div>
@@ -403,16 +394,20 @@ _This is an automated notification from HappyMoment_`
                             <div className="bg-slate-50 rounded-xl p-5 space-y-3">
                                 <h3 className="font-semibold text-slate-700">Payment Summary</h3>
                                 <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">Current Package:</span>
+                                    <span className="font-semibold text-blue-600">{getCurrentPackageDisplay()}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">Requested Package:</span>
+                                    <span className="font-semibold text-rose-600">{PACKAGE_NAMES[selectedPackageTier]}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
                                     <span className="text-slate-500">Mobile Money Number:</span>
                                     <span className="font-mono font-semibold">{senderNumber}</span>
                                 </div>
                                 <div className="flex justify-between text-sm">
                                     <span className="text-slate-500">Amount:</span>
                                     <span className="font-bold text-green-600">{currency === 'GHS' ? '₵' : '$'}{amountPaid}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-slate-500">Package:</span>
-                                    <span className="font-semibold">{PACKAGE_NAMES[selectedPackageTier]}</span>
                                 </div>
                                 <div className="flex justify-between text-sm">
                                     <span className="text-slate-500">Status:</span>
@@ -485,7 +480,7 @@ _This is an automated notification from HappyMoment_`
                             {PACKAGE_NAMES[selectedPackageTier]} Package • {currency === 'GHS' ? '₵' : '$'}{price}
                         </p>
                         <div className="mt-2 inline-block bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-semibold">
-                            Current plan: FREE
+                            Your current plan: {getCurrentPackageDisplay()}
                         </div>
                     </div>
 
@@ -608,7 +603,7 @@ _This is an automated notification from HappyMoment_`
                                     <p className="text-sm font-semibold text-blue-800">How it works:</p>
                                     <p className="text-sm text-blue-700">
                                         After submitting, the admin will be notified via WhatsApp.
-                                        Your account stays on the <strong>FREE plan</strong> until the admin confirms your payment.
+                                        Your account stays on the <strong className="font-bold">{getCurrentPackageDisplay()} plan</strong> until the admin confirms your payment.
                                     </p>
                                 </div>
                             </div>
