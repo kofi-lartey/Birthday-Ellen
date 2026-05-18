@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
+import usePackage from '../hooks/usePackage';
+// Adjust path as needed
 
 export default function CreateEvent() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [eventType, setEventType] = useState('birthday');
-  const [userPackage, setUserPackage] = useState(null);
   const [formData, setFormData] = useState({
     event_name: '',
     event_date: '',
     is_public: false
   });
-  const [user, setUser] = useState(null);
+  
+  // Use the package hook
+  const { userPackage, canCreatePageType, getUpgradeSuggestion, isLoading: packageLoading } = usePackage();
 
   // All available event types with their details
   const allEventTypes = [
@@ -24,51 +27,8 @@ export default function CreateEvent() {
     { value: 'other', label: 'Other', emoji: '📅', gradient: 'from-gray-500 to-gray-700', placeholder: 'e.g., Special Event' }
   ];
 
-  // Load user and their package on mount
-  useEffect(() => {
-    const loadUserAndPackage = async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (authUser) {
-        setUser(authUser);
-        
-        // Get user's package from database
-        const { data: userData } = await supabase
-          .from('users')
-          .select('package_tier')
-          .eq('id', authUser.id)
-          .single();
-        
-        if (userData?.package_tier) {
-          setUserPackage(userData.package_tier);
-        } else {
-          // Check localStorage as fallback
-          const localUser = JSON.parse(localStorage.getItem('current_user') || 'null');
-          if (localUser?.package_tier) {
-            setUserPackage(localUser.package_tier);
-          } else {
-            // Default to free package
-            setUserPackage('free');
-          }
-        }
-      }
-    };
-    loadUserAndPackage();
-  }, []);
-
-  // Get allowed event types based on user's package tier
-  const getAllowedEventTypes = () => {
-    const packageRestrictions = {
-      free: ['birthday'],
-      basic: ['birthday', 'wedding'],
-      premium: ['birthday', 'wedding', 'anniversary', 'party'],
-      enterprise: ['birthday', 'wedding', 'anniversary', 'party', 'hangout', 'other']
-    };
-    
-    const allowed = packageRestrictions[userPackage] || packageRestrictions.free;
-    return allEventTypes.filter(type => allowed.includes(type.value));
-  };
-
-  const allowedEventTypes = getAllowedEventTypes();
+  // Filter event types based on package
+  const allowedEventTypes = allEventTypes.filter(type => canCreatePageType(type.value));
   const selectedEventType = allowedEventTypes.find(t => t.value === eventType) || allowedEventTypes[0];
 
   // Auto-select first allowed type if current type is not allowed
@@ -119,7 +79,6 @@ export default function CreateEvent() {
 
       const code = generateCode();
 
-      // Prepare basic event data
       const eventData = {
         user_id: authUser.id,
         event_type: eventType,
@@ -134,7 +93,6 @@ export default function CreateEvent() {
 
       let eventId = null;
 
-      // For non-birthday events, also create in specific table
       if (eventType !== 'birthday') {
         const tableMap = {
           wedding: 'weddings',
@@ -174,7 +132,6 @@ export default function CreateEvent() {
         }
       }
 
-      // Insert into event_registry
       const { error: registryError } = await supabase
         .from('event_registry')
         .insert(eventData);
@@ -192,26 +149,17 @@ export default function CreateEvent() {
     }
   };
 
-  // Get upgrade message based on package
-  const getUpgradeMessage = () => {
-    if (userPackage === 'free') {
-      return "Upgrade to Basic to create Wedding events!";
-    }
-    if (userPackage === 'basic') {
-      return "Upgrade to Premium to create Anniversary and Party events!";
-    }
-    if (userPackage === 'premium') {
-      return "Upgrade to Enterprise to create Hangout and Other events!";
-    }
-    return null;
-  };
-
-  const upgradeMessage = getUpgradeMessage();
+  if (packageLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rose-500"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50 py-12 px-4">
       <div className="max-w-2xl mx-auto">
-        {/* Header */}
         <div className="text-center mb-8">
           <button
             onClick={() => navigate('/dashboard')}
@@ -224,12 +172,11 @@ export default function CreateEvent() {
             Create a New Event
           </h1>
           <p className="text-gray-600 mt-2">
-            Your plan: <span className="font-semibold capitalize">{userPackage}</span>
+            Your plan: <span className="font-semibold capitalize">{userPackage?.tier || 'Free'}</span>
           </p>
         </div>
 
         <form onSubmit={createEvent} className="bg-white rounded-3xl shadow-2xl p-8 space-y-6">
-          {/* Event Type Selection - Filtered by package */}
           <div>
             <label className="block text-gray-700 font-semibold mb-3">What type of event?</label>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -250,12 +197,12 @@ export default function CreateEvent() {
               ))}
             </div>
             
-            {/* Show upgrade message if some event types are locked */}
-            {upgradeMessage && (
+            {/* Show upgrade message for locked event types */}
+            {allEventTypes.filter(type => !canCreatePageType(type.value)).length > 0 && (
               <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
                 <p className="text-amber-700 text-sm flex items-center gap-2">
                   <span className="text-lg">🔒</span>
-                  {upgradeMessage}
+                  Upgrade your plan to unlock more event types!
                   <button
                     type="button"
                     onClick={() => navigate('/select-package')}
@@ -268,7 +215,6 @@ export default function CreateEvent() {
             )}
           </div>
 
-          {/* Event Name */}
           <div>
             <label className="block text-gray-700 font-semibold mb-2">
               {eventType === 'wedding' ? 'Couple Names' : 
@@ -287,7 +233,6 @@ export default function CreateEvent() {
             />
           </div>
 
-          {/* Event Date */}
           <div>
             <label className="block text-gray-700 font-semibold mb-2">
               {eventType === 'wedding' ? 'Wedding Date' :
@@ -305,7 +250,6 @@ export default function CreateEvent() {
             />
           </div>
 
-          {/* Public Toggle */}
           <div className="flex items-center gap-3 p-4 bg-rose-50 rounded-xl">
             <input
               type="checkbox"
@@ -317,7 +261,6 @@ export default function CreateEvent() {
             <label className="text-gray-700 font-medium">Make this event public (shareable link)</label>
           </div>
 
-          {/* Info Box */}
           <div className="bg-blue-50 rounded-xl p-4">
             <p className="text-blue-800 text-sm flex items-center gap-2">
               <span className="text-xl">💡</span>
