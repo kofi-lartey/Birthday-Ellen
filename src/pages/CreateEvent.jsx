@@ -6,6 +6,7 @@ export default function CreateEvent() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [eventType, setEventType] = useState('birthday');
+  const [userPackage, setUserPackage] = useState(null);
   const [formData, setFormData] = useState({
     event_name: '',
     event_date: '',
@@ -13,18 +14,8 @@ export default function CreateEvent() {
   });
   const [user, setUser] = useState(null);
 
-  // Load user on mount
-  useEffect(() => {
-    const loadUser = async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (authUser) {
-        setUser(authUser);
-      }
-    };
-    loadUser();
-  }, []);
-
-  const eventTypes = [
+  // All available event types with their details
+  const allEventTypes = [
     { value: 'birthday', label: 'Birthday', emoji: '🎂', gradient: 'from-rose-500 to-pink-500', placeholder: 'e.g., Sarah\'s Birthday' },
     { value: 'wedding', label: 'Wedding', emoji: '💍', gradient: 'from-pink-500 to-rose-500', placeholder: 'e.g., Sarah & Michael' },
     { value: 'anniversary', label: 'Anniversary', emoji: '💕', gradient: 'from-red-500 to-rose-500', placeholder: 'e.g., John & Jane' },
@@ -32,6 +23,60 @@ export default function CreateEvent() {
     { value: 'hangout', label: 'Hangout', emoji: '👋', gradient: 'from-blue-500 to-cyan-500', placeholder: 'e.g., Movie Night' },
     { value: 'other', label: 'Other', emoji: '📅', gradient: 'from-gray-500 to-gray-700', placeholder: 'e.g., Special Event' }
   ];
+
+  // Load user and their package on mount
+  useEffect(() => {
+    const loadUserAndPackage = async () => {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
+        setUser(authUser);
+        
+        // Get user's package from database
+        const { data: userData } = await supabase
+          .from('users')
+          .select('package_tier')
+          .eq('id', authUser.id)
+          .single();
+        
+        if (userData?.package_tier) {
+          setUserPackage(userData.package_tier);
+        } else {
+          // Check localStorage as fallback
+          const localUser = JSON.parse(localStorage.getItem('current_user') || 'null');
+          if (localUser?.package_tier) {
+            setUserPackage(localUser.package_tier);
+          } else {
+            // Default to free package
+            setUserPackage('free');
+          }
+        }
+      }
+    };
+    loadUserAndPackage();
+  }, []);
+
+  // Get allowed event types based on user's package tier
+  const getAllowedEventTypes = () => {
+    const packageRestrictions = {
+      free: ['birthday'],
+      basic: ['birthday', 'wedding'],
+      premium: ['birthday', 'wedding', 'anniversary', 'party'],
+      enterprise: ['birthday', 'wedding', 'anniversary', 'party', 'hangout', 'other']
+    };
+    
+    const allowed = packageRestrictions[userPackage] || packageRestrictions.free;
+    return allEventTypes.filter(type => allowed.includes(type.value));
+  };
+
+  const allowedEventTypes = getAllowedEventTypes();
+  const selectedEventType = allowedEventTypes.find(t => t.value === eventType) || allowedEventTypes[0];
+
+  // Auto-select first allowed type if current type is not allowed
+  useEffect(() => {
+    if (allowedEventTypes.length > 0 && !allowedEventTypes.find(t => t.value === eventType)) {
+      setEventType(allowedEventTypes[0].value);
+    }
+  }, [userPackage, eventType]);
 
   const generateCode = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -74,7 +119,7 @@ export default function CreateEvent() {
 
       const code = generateCode();
 
-      // Prepare basic event data (no rich media - that goes in Edit Details)
+      // Prepare basic event data
       const eventData = {
         user_id: authUser.id,
         event_type: eventType,
@@ -147,7 +192,21 @@ export default function CreateEvent() {
     }
   };
 
-  const selectedEventType = eventTypes.find(t => t.value === eventType);
+  // Get upgrade message based on package
+  const getUpgradeMessage = () => {
+    if (userPackage === 'free') {
+      return "Upgrade to Basic to create Wedding events!";
+    }
+    if (userPackage === 'basic') {
+      return "Upgrade to Premium to create Anniversary and Party events!";
+    }
+    if (userPackage === 'premium') {
+      return "Upgrade to Enterprise to create Hangout and Other events!";
+    }
+    return null;
+  };
+
+  const upgradeMessage = getUpgradeMessage();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50 py-12 px-4">
@@ -164,15 +223,17 @@ export default function CreateEvent() {
           <h1 className="text-4xl font-['Dancing_Script'] text-rose-500">
             Create a New Event
           </h1>
-          <p className="text-gray-600 mt-2">Create an event, then add photos, music, and details later</p>
+          <p className="text-gray-600 mt-2">
+            Your plan: <span className="font-semibold capitalize">{userPackage}</span>
+          </p>
         </div>
 
         <form onSubmit={createEvent} className="bg-white rounded-3xl shadow-2xl p-8 space-y-6">
-          {/* Event Type Selection */}
+          {/* Event Type Selection - Filtered by package */}
           <div>
             <label className="block text-gray-700 font-semibold mb-3">What type of event?</label>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {eventTypes.map((type) => (
+              {allowedEventTypes.map((type) => (
                 <button
                   key={type.value}
                   type="button"
@@ -188,6 +249,23 @@ export default function CreateEvent() {
                 </button>
               ))}
             </div>
+            
+            {/* Show upgrade message if some event types are locked */}
+            {upgradeMessage && (
+              <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <p className="text-amber-700 text-sm flex items-center gap-2">
+                  <span className="text-lg">🔒</span>
+                  {upgradeMessage}
+                  <button
+                    type="button"
+                    onClick={() => navigate('/select-package')}
+                    className="ml-auto text-amber-800 font-semibold underline hover:no-underline"
+                  >
+                    Upgrade Now →
+                  </button>
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Event Name */}

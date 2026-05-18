@@ -2,13 +2,13 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, STORAGE_KEYS } from '../supabase'
 
-// Default packages kept same for logic, UI updated in render
+// Default packages with allowed event types
 const defaultPackages = [
     {
         id: 1,
         name: 'Free',
         tier: 'free',
-        description: 'Perfect for simple event pages for loved ones.',
+        description: 'Perfect for simple birthday celebrations.',
         price: 0,
         priceGHS: 0,
         currency: 'USD',
@@ -20,6 +20,7 @@ const defaultPackages = [
         max_photos_per_page: 5,
         allow_custom_domain: false,
         allow_analytics: false,
+        allowed_event_types: ['birthday'], // Only birthday events
         buttonClass: 'bg-gray-100 text-gray-700 hover:bg-gray-200'
     },
     {
@@ -38,6 +39,7 @@ const defaultPackages = [
         max_photos_per_page: 15,
         allow_custom_domain: false,
         allow_analytics: false,
+        allowed_event_types: ['birthday', 'wedding'], // Birthday + Wedding
         buttonClass: 'bg-blue-600 text-white hover:bg-blue-700'
     },
     {
@@ -56,6 +58,7 @@ const defaultPackages = [
         max_photos_per_page: 50,
         allow_custom_domain: false,
         allow_analytics: true,
+        allowed_event_types: ['birthday', 'wedding', 'anniversary', 'party'], // 4 event types
         buttonClass: 'bg-indigo-600 text-white hover:bg-indigo-700'
     },
     {
@@ -74,6 +77,7 @@ const defaultPackages = [
         max_photos_per_page: 999999,
         allow_custom_domain: true,
         allow_analytics: true,
+        allowed_event_types: ['birthday', 'wedding', 'anniversary', 'party', 'hangout', 'other'], // All 6 event types
         buttonClass: 'bg-purple-600 text-white hover:bg-purple-700'
     }
 ]
@@ -87,7 +91,7 @@ function SelectPackage() {
     const [user, setUser] = useState(null)
     const [billingCycle, setBillingCycle] = useState('monthly')
     const [hoveredCard, setHoveredCard] = useState(null)
-    const [currency, setCurrency] = useState('USD') // 'USD' or 'GHS'
+    const [currency, setCurrency] = useState('USD')
 
     useEffect(() => {
         const checkUser = () => {
@@ -158,6 +162,14 @@ function SelectPackage() {
                 return
             }
 
+            // Store package info in localStorage for create event page to check
+            localStorage.setItem('selected_package', JSON.stringify({
+                tier: pkg.tier,
+                allowed_event_types: pkg.allowed_event_types,
+                max_pages: pkg.max_pages,
+                max_photos_per_page: pkg.max_photos_per_page
+            }))
+
             const updatedUser = {
                 ...user,
                 package_pending: pkg.tier,
@@ -187,6 +199,14 @@ function SelectPackage() {
     }
 
     async function activateFreePackage(pkg) {
+        // Store package info for create event page
+        localStorage.setItem('selected_package', JSON.stringify({
+            tier: pkg.tier,
+            allowed_event_types: pkg.allowed_event_types,
+            max_pages: pkg.max_pages,
+            max_photos_per_page: pkg.max_photos_per_page
+        }))
+
         const updatedUser = {
             ...user,
             package_id: pkg.id,
@@ -219,6 +239,19 @@ function SelectPackage() {
 
     function goToDashboard() {
         navigate('/dashboard')
+    }
+
+    // Get event type display name
+    const getEventTypeName = (type) => {
+        const names = {
+            birthday: '🎂 Birthday',
+            wedding: '💍 Wedding',
+            anniversary: '💕 Anniversary',
+            party: '🎉 Party',
+            hangout: '👋 Hangout',
+            other: '📅 Other'
+        }
+        return names[type] || type
     }
 
     return (
@@ -366,6 +399,18 @@ function SelectPackage() {
                                         {pkg.price === 0 && (
                                             <p className="text-xs text-slate-400 mt-1">No credit card required</p>
                                         )}
+                                    </div>
+
+                                    {/* Allowed Event Types Badges */}
+                                    <div className="mb-6">
+                                        <p className="text-xs font-semibold text-slate-500 mb-2">INCLUDES:</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {pkg.allowed_event_types.map(type => (
+                                                <span key={type} className="text-xs px-2 py-1 bg-slate-100 text-slate-700 rounded-full">
+                                                    {getEventTypeName(type)}
+                                                </span>
+                                            ))}
+                                        </div>
                                     </div>
 
                                     {/* Features List */}
