@@ -1,216 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase, STORAGE_KEYS } from '../supabase'
-import { usePackage, DEFAULT_PACKAGES } from '../hooks/usePackage.jsx'
-import { getEventSchema, getEventFields, transformFormData, validateFormData } from '../config/eventSchemas'
-import { getEventDisplay } from '../config/orderTypeMapping'
-
-// Dynamic field renderer for event-specific forms
-function DynamicFieldRenderer({ field, value, onChange, onFileUpload, maxPhotos, currentPhotosCount }) {
-    const { name, label, type, accept, placeholder, helpText, rows, options, max } = field
-
-    const handleChange = (e) => {
-        const newValue = type === 'checkbox' ? e.target.checked : e.target.value
-        onChange(name, newValue)
-    }
-
-    const handleFileChange = async (e) => {
-        if (onFileUpload) {
-            await onFileUpload(e, name)
-        }
-    }
-
-    const baseInputClass = "w-full p-3 border-2 border-rose-200 rounded-xl text-sm"
-
-    switch (type) {
-        case 'text':
-        case 'date':
-        case 'time':
-        case 'tel':
-        case 'url':
-            return (
-                <div key={name}>
-                    <label className="block text-gray-600 mb-2">{label} {field.required && <span className="text-red-500">*</span>}</label>
-                    <input
-                        type={type}
-                        value={value || ''}
-                        onChange={handleChange}
-                        className={baseInputClass}
-                        placeholder={placeholder}
-                    />
-                    {helpText && <p className="text-xs text-gray-500 mt-1">{helpText}</p>}
-                </div>
-            )
-
-        case 'textarea':
-            return (
-                <div key={name}>
-                    <label className="block text-gray-600 mb-2">{label} {field.required && <span className="text-red-500">*</span>}</label>
-                    <textarea
-                        value={value || ''}
-                        onChange={handleChange}
-                        className={baseInputClass}
-                        placeholder={placeholder}
-                        rows={rows || 4}
-                    />
-                    {helpText && <p className="text-xs text-gray-500 mt-1">{helpText}</p>}
-                </div>
-            )
-
-        case 'checkbox':
-            return (
-                <div key={name} className="flex items-start gap-3 p-3 border-2 border-rose-200 rounded-xl">
-                    <input
-                        type="checkbox"
-                        checked={value || false}
-                        onChange={handleChange}
-                        className="mt-1 w-5 h-5 accent-rose-500"
-                    />
-                    <div>
-                        <label className="text-gray-700 font-medium">{label}</label>
-                        {helpText && <p className="text-xs text-gray-500 mt-1">{helpText}</p>}
-                    </div>
-                </div>
-            )
-
-        case 'file-image':
-            return (
-                <div key={name}>
-                    <label className="block text-gray-600 mb-2">{label}</label>
-                    <div className="space-y-2">
-                        <input
-                            type="file"
-                            accept={accept}
-                            onChange={handleFileChange}
-                            className="w-full p-2 border-2 border-rose-200 rounded-xl text-sm"
-                        />
-                        <p className="text-xs text-gray-500 text-center">or enter URL below</p>
-                        <input
-                            type="url"
-                            value={value || ''}
-                            onChange={handleChange}
-                            className={baseInputClass}
-                            placeholder={placeholder}
-                        />
-                    </div>
-                    {value && (
-                        <img
-                            src={value}
-                            alt="Preview"
-                            className="mt-2 w-full h-32 object-cover rounded-xl"
-                            onError={(e) => e.target.style.display = 'none'}
-                        />
-                    )}
-                    {helpText && <p className="text-xs text-gray-500 mt-1">{helpText}</p>}
-                </div>
-            )
-
-        case 'file-audio':
-            return (
-                <div key={name}>
-                    <label className="block text-gray-600 mb-2">{label}</label>
-                    <div className="space-y-2">
-                        <input
-                            type="file"
-                            accept={accept}
-                            onChange={handleFileChange}
-                            className="w-full p-2 border-2 border-rose-200 rounded-xl text-sm"
-                        />
-                        <p className="text-xs text-gray-500 text-center">or enter URL below</p>
-                        <input
-                            type="url"
-                            value={value || ''}
-                            onChange={handleChange}
-                            className={baseInputClass}
-                            placeholder={placeholder}
-                        />
-                    </div>
-                    {helpText && <p className="text-xs text-gray-500 mt-1">{helpText}</p>}
-                </div>
-            )
-
-        case 'photo-uploader':
-            return (
-                <div key={name}>
-                    <label className="block text-gray-600 mb-2">
-                        {label} ({currentPhotosCount || 0}/{maxPhotos}) - Max 5MB each
-                    </label>
-                    <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        onChange={handleFileChange}
-                        disabled={(currentPhotosCount || 0) >= maxPhotos}
-                        className="w-full p-2 border-2 border-rose-200 rounded-xl text-sm"
-                    />
-                    {helpText && <p className="text-xs text-gray-500 mt-1">{helpText}</p>}
-                </div>
-            )
-
-        case 'select':
-            return (
-                <div key={name}>
-                    <label className="block text-gray-600 mb-2">{label}</label>
-                    <select
-                        value={value || ''}
-                        onChange={handleChange}
-                        className={baseInputClass}
-                    >
-                        <option value="">{placeholder || 'Select...'}</option>
-                        {options?.map(opt => (
-                            <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                    </select>
-                </div>
-            )
-
-        case 'custom-fields':
-            return (
-                <div key={name}>
-                    <label className="block text-gray-600 mb-2">{label}</label>
-                    <div className="space-y-3">
-                        {field.fields?.map(subField => (
-                            <div key={subField.name}>
-                                <label className="block text-gray-600 mb-1 text-sm">{subField.label}</label>
-                                {subField.type === 'textarea' ? (
-                                    <textarea
-                                        value={value?.[subField.name] || ''}
-                                        onChange={(e) => onChange(`${name}.${subField.name}`, e.target.value)}
-                                        className={baseInputClass}
-                                        placeholder={subField.placeholder}
-                                        rows={subField.rows || 3}
-                                    />
-                                ) : (
-                                    <input
-                                        type={subField.type}
-                                        value={value?.[subField.name] || ''}
-                                        onChange={(e) => onChange(`${name}.${subField.name}`, e.target.value)}
-                                        className={baseInputClass}
-                                        placeholder={subField.placeholder}
-                                    />
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                    {helpText && <p className="text-xs text-gray-500 mt-1">{helpText}</p>}
-                </div>
-            )
-
-        default:
-            return (
-                <div key={name}>
-                    <label className="block text-gray-600 mb-2">{label}</label>
-                    <input
-                        type="text"
-                        value={value || ''}
-                        onChange={handleChange}
-                        className={baseInputClass}
-                        placeholder={placeholder}
-                    />
-                </div>
-            )
-    }
-}
 
 function Dashboard() {
     const navigate = useNavigate()
@@ -230,6 +20,7 @@ function Dashboard() {
     const [shareNotification, setShareNotification] = useState({ show: false, message: '', type: '', eventId: null })
     const [showShareModal, setShowShareModal] = useState(false)
     const [shareOrder, setShareOrder] = useState(null)
+    const [isRefreshing, setIsRefreshing] = useState(false)
 
     // Helper to check if premium features are unlocked
     const hasFeatureAccess = (tier) => {
@@ -243,26 +34,6 @@ function Dashboard() {
         supabase.auth.signOut().catch(() => { })
         navigate('/login')
     }
-
-    // Event type color mappings
-    const getEventColorClasses = (eventType) => {
-        const colors = {
-            birthday: { bg: 'from-rose-50 to-pink-50', border: 'border-rose-100', iconBg: 'from-rose-400 to-pink-500', badge: 'bg-rose-200 text-rose-700' },
-            wedding: { bg: 'from-pink-50 to-rose-100', border: 'border-pink-200', iconBg: 'from-pink-400 to-rose-500', badge: 'bg-pink-200 text-pink-700' },
-            anniversary: { bg: 'from-red-50 to-rose-100', border: 'border-red-200', iconBg: 'from-red-400 to-rose-500', badge: 'bg-red-200 text-red-700' },
-            party: { bg: 'from-purple-50 to-indigo-100', border: 'border-purple-200', iconBg: 'from-purple-400 to-indigo-500', badge: 'bg-purple-200 text-purple-700' },
-            hangout: { bg: 'from-blue-50 to-cyan-100', border: 'border-blue-200', iconBg: 'from-blue-400 to-cyan-500', badge: 'bg-blue-200 text-blue-700' },
-            other: { bg: 'from-gray-50 to-gray-100', border: 'border-gray-200', iconBg: 'from-gray-400 to-gray-500', badge: 'bg-gray-200 text-gray-700' },
-            graduation: { bg: 'from-blue-50 to-indigo-100', border: 'border-blue-200', iconBg: 'from-blue-400 to-indigo-500', badge: 'bg-blue-200 text-blue-700' }
-        }
-        return colors[eventType] || colors.birthday
-    }
-
-    // Dynamic Event Details state
-    const [birthdayDetails, setBirthdayDetails] = useState({})
-    const [currentEventType, setCurrentEventType] = useState('birthday')
-    const [showShareLink, setShowShareLink] = useState(false)
-    const [shareLinkCopied, setShareLinkCopied] = useState(false)
 
     // WhatsApp share function
     const shareToWhatsApp = (orderCode, recipientName, linkType = 'upload') => {
@@ -317,35 +88,9 @@ function Dashboard() {
         setShowShareModal(true)
     }
 
-    useEffect(() => {
-        const currentUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER) || 'null')
-        if (!currentUser) {
-            navigate('/login')
-            return
-        }
-
-        if (!currentUser.package_tier) {
-            navigate('/select-package')
-            return
-        }
-
-        if (currentUser.package_pending) {
-            setPendingUpgrade({
-                to_package_tier: currentUser.package_pending,
-                payment_status: currentUser.payment_status
-            })
-            setPaymentPending(currentUser.payment_status === 'pending')
-        } else {
-            setPendingUpgrade(null)
-            setPaymentPending(false)
-        }
-
-        setUser(currentUser)
-        refreshUserFromSupabase(currentUser.id)
-        loadEventsFromRegistry(currentUser.id)
-    }, [navigate])
-
+    // Refresh user data from Supabase
     async function refreshUserFromSupabase(userId) {
+        setIsRefreshing(true)
         try {
             const { data, error } = await supabase
                 .from('users')
@@ -358,21 +103,131 @@ function Dashboard() {
                 localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(data))
                 setUser(data)
 
-                if (data.package_pending) {
+                // Update pending upgrade state based on fresh data
+                if (data.package_pending && data.payment_status === 'pending') {
                     setPendingUpgrade({
                         to_package_tier: data.package_pending,
                         payment_status: data.payment_status
                     })
-                    setPaymentPending(data.payment_status === 'pending')
+                    setPaymentPending(true)
                 } else {
                     setPendingUpgrade(null)
                     setPaymentPending(false)
                 }
+
+                return data
             }
         } catch (err) {
             console.log('Error refreshing user from Supabase:', err)
+        } finally {
+            setIsRefreshing(false)
         }
+        return null
     }
+
+    // Polling effect - checks for package updates every 30 seconds
+    useEffect(() => {
+        if (!user?.id) return
+
+        const interval = setInterval(async () => {
+            const { data: freshUser } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id', user.id)
+                .single()
+
+            if (freshUser) {
+                // Check if package changed or pending status changed
+                const packageChanged = freshUser.package_tier !== user.package_tier
+                const pendingCleared = user.package_pending && !freshUser.package_pending
+
+                if (packageChanged || pendingCleared) {
+                    // Update local storage and state
+                    localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(freshUser))
+                    setUser(freshUser)
+
+                    // Update pending upgrade state
+                    if (freshUser.package_pending && freshUser.payment_status === 'pending') {
+                        setPendingUpgrade({
+                            to_package_tier: freshUser.package_pending,
+                            payment_status: freshUser.payment_status
+                        })
+                        setPaymentPending(true)
+                    } else {
+                        setPendingUpgrade(null)
+                        setPaymentPending(false)
+                    }
+
+                    // Show success notification if upgraded
+                    if (packageChanged && freshUser.package_tier !== 'free') {
+                        setShareNotification({
+                            show: true,
+                            message: `🎉 Congratulations! Your package has been upgraded to ${freshUser.package_tier?.toUpperCase()}! 🎉`,
+                            type: 'upgrade',
+                            eventId: null
+                        })
+                        setTimeout(() => {
+                            setShareNotification({ show: false, message: '', type: '', eventId: null })
+                        }, 5000)
+                    }
+                }
+            }
+        }, 30000) // Check every 30 seconds
+
+        return () => clearInterval(interval)
+    }, [user?.id])
+
+    // Update pendingUpgrade when user changes
+    useEffect(() => {
+        if (user) {
+            if (user.package_pending && user.payment_status === 'pending') {
+                setPendingUpgrade({
+                    to_package_tier: user.package_pending,
+                    payment_status: user.payment_status
+                })
+                setPaymentPending(true)
+            } else {
+                setPendingUpgrade(null)
+                setPaymentPending(false)
+            }
+        }
+    }, [user])
+
+    // Initial load
+    useEffect(() => {
+        const loadUser = async () => {
+            const currentUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER) || 'null')
+
+            if (!currentUser) {
+                navigate('/login')
+                return
+            }
+
+            if (!currentUser.package_tier) {
+                navigate('/select-package')
+                return
+            }
+
+            // Always fetch fresh user data from Supabase on initial load
+            const freshUser = await refreshUserFromSupabase(currentUser.id)
+
+            if (!freshUser) {
+                // Fallback to cached user if Supabase fails
+                setUser(currentUser)
+                if (currentUser.package_pending && currentUser.payment_status === 'pending') {
+                    setPendingUpgrade({
+                        to_package_tier: currentUser.package_pending,
+                        payment_status: currentUser.payment_status
+                    })
+                    setPaymentPending(true)
+                }
+            }
+
+            await loadEventsFromRegistry(currentUser.id)
+        }
+
+        loadUser()
+    }, [navigate])
 
     // MAIN LOAD FUNCTION - Reads ONLY from event_registry
     async function loadEventsFromRegistry(userId) {
@@ -919,18 +774,38 @@ function Dashboard() {
                                         Your upgrade is under review. You'll have access to all {pendingUpgrade.to_package_tier} features once confirmed.
                                     </p>
                                     {user?.payment_reference_code && (
-                                        <p className="text-xs md:text-sm text-purple-600 mt-1">
-                                            <strong>Reference:</strong> <span className="font-mono bg-purple-100 px-2 py-0.5 rounded">{user.payment_reference_code}</span>
+                                        <p className="text-xs text-purple-600 mt-1">
+                                            Reference: <span className="font-mono">{user.payment_reference_code}</span>
                                         </p>
                                     )}
                                 </div>
                             </div>
-                            <button
-                                onClick={() => window.location.reload()}
-                                className="px-3 md:px-4 py-1.5 md:py-2 bg-purple-500 text-white rounded-lg font-semibold hover:bg-purple-600 transition text-sm whitespace-nowrap"
-                            >
-                                Refresh Status
-                            </button>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={async () => {
+                                        await refreshUserFromSupabase(user?.id)
+                                        setShareNotification({
+                                            show: true,
+                                            message: isRefreshing ? "Checking for updates..." : "Status updated!",
+                                            type: 'refresh',
+                                            eventId: null
+                                        })
+                                        setTimeout(() => {
+                                            setShareNotification({ show: false, message: '', type: '', eventId: null })
+                                        }, 2000)
+                                    }}
+                                    disabled={isRefreshing}
+                                    className="px-3 md:px-4 py-1.5 md:py-2 bg-purple-500 text-white rounded-lg font-semibold hover:bg-purple-600 transition text-sm whitespace-nowrap disabled:opacity-50"
+                                >
+                                    {isRefreshing ? 'Checking...' : '🔄 Check Status'}
+                                </button>
+                                <button
+                                    onClick={() => window.location.reload()}
+                                    className="px-3 md:px-4 py-1.5 md:py-2 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 transition text-sm whitespace-nowrap"
+                                >
+                                    🔄 Refresh Page
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -948,19 +823,13 @@ function Dashboard() {
                     <div className="flex items-center gap-2 md:gap-4">
                         {user?.package_tier && (
                             <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold 
-                     ${user.package_tier === 'premium' ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white' :
+                                ${user.package_tier === 'premium' ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white' :
                                     user.package_tier === 'enterprise' ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white' :
                                         user.package_tier === 'basic' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}>
                                 <span>{user.package_name || user.package_tier?.toUpperCase()}</span>
-                                {pendingUpgrade && (
-                                    <span className="text-[10px] bg-purple-500 text-white px-1 rounded animate-pulse">↑</span>
-                                )}
-                                {user.payment_status !== 'confirmed' && user.package_tier !== 'free' && !pendingUpgrade && (
-                                    <span className="text-[10px] bg-yellow-500 text-white px-1 rounded animate-pulse">!</span>
-                                )}
                             </div>
                         )}
-                        {user?.package_tier && user?.package_tier !== 'enterprise' && (
+                        {user?.package_tier && user?.package_tier !== 'enterprise' && !pendingUpgrade && (
                             <button
                                 onClick={() => navigate('/select-package?upgrade=true')}
                                 className="text-[10px] bg-rose-500 text-white px-2 py-1 rounded-full hover:bg-rose-600 transition whitespace-nowrap"
@@ -976,8 +845,9 @@ function Dashboard() {
             {/* Share Notification */}
             {shareNotification.show && (
                 <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 animate-bounce">
-                    <div className="bg-green-500 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2">
-                        <span>✅</span>
+                    <div className={`px-6 py-3 rounded-full shadow-lg flex items-center gap-2 ${shareNotification.type === 'upgrade' ? 'bg-green-500' : 'bg-blue-500'
+                        } text-white`}>
+                        <span>{shareNotification.type === 'upgrade' ? '🎉' : '✅'}</span>
                         <span className="text-sm">{shareNotification.message}</span>
                     </div>
                 </div>
@@ -1131,7 +1001,6 @@ function Dashboard() {
                         </div>
 
                         <div className="space-y-3">
-                            {/* WhatsApp - Upload Link */}
                             <button
                                 onClick={() => {
                                     shareToWhatsApp(shareOrder.code, shareOrder.recipientName, 'upload')
@@ -1147,7 +1016,6 @@ function Dashboard() {
                                 <div>→</div>
                             </button>
 
-                            {/* WhatsApp - Event Link */}
                             <button
                                 onClick={() => {
                                     shareToWhatsApp(shareOrder.code, shareOrder.recipientName, 'event')
@@ -1163,7 +1031,6 @@ function Dashboard() {
                                 <div>→</div>
                             </button>
 
-                            {/* Copy Upload Link */}
                             <button
                                 onClick={() => {
                                     copyLink(shareOrder.code, 'upload', shareOrder.recipientName)
@@ -1179,7 +1046,6 @@ function Dashboard() {
                                 <div>→</div>
                             </button>
 
-                            {/* Copy Event Link */}
                             <button
                                 onClick={() => {
                                     copyLink(shareOrder.code, 'event', shareOrder.recipientName)

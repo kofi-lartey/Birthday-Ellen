@@ -49,12 +49,48 @@ function PaymentDetails() {
 
     // Generate unique reference code on mount
     useEffect(() => {
-        const currentUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER) || 'null')
-        if (!currentUser) {
-            navigate('/login')
-            return
+        const loadUser = async () => {
+            // Get the session from Supabase Auth (this is the source of truth)
+            const { data: { session } } = await supabase.auth.getSession()
+
+            if (!session?.user) {
+                navigate('/login')
+                return
+            }
+
+            // Get the user profile from your users table
+            const { data: userProfile, error: profileError } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id', session.user.id)
+                .single()
+
+            if (profileError) {
+                console.error('Error loading user profile:', profileError)
+                navigate('/login')
+                return
+            }
+
+            // Create user object with correct ID from the session
+            const currentUser = {
+                id: session.user.id,  // This is the correct UUID from Supabase Auth
+                email: session.user.email,
+                name: userProfile.name,
+                package_tier: userProfile.package_tier || 'free',
+                role: userProfile.role || 'user',
+                ...userProfile
+            }
+
+            setUser(currentUser)
+
+            // Update localStorage with correct data
+            localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(currentUser))
+
+            console.log('✅ User ID from session:', currentUser.id)
+            console.log('✅ User email:', currentUser.email)
         }
-        setUser(currentUser)
+
+        loadUser()
 
         const refCode = generatePaymentReference(selectedPackageTier)
         setPaymentReference(refCode)
@@ -163,6 +199,20 @@ _This is an automated notification from HappyMoment_`
             return
         }
 
+        // Verify the user ID exists in the users table
+        const { data: verifyUser, error: verifyError } = await supabase
+            .from('users')
+            .select('id')
+            .eq('id', user.id)
+            .single()
+
+        if (verifyError || !verifyUser) {
+            console.error('Invalid user ID:', user.id)
+            setError('Session expired. Please log out and log in again.')
+            setIsSubmitting(false)
+            return
+        }
+
         try {
             // Map package tier to correct package ID
             const packageIdMap = {
@@ -175,7 +225,7 @@ _This is an automated notification from HappyMoment_`
             const finalPackageId = packageIdMap[selectedPackageTier] || 75
 
             const upgradeData = {
-                user_id: user.id,
+                user_id: user.id,  // This is now verified to be correct
                 user_email: user.email,
                 user_name: user.name || user.email,
                 from_package_tier: user.package_tier || 'free',
@@ -190,7 +240,8 @@ _This is an automated notification from HappyMoment_`
                 created_at: new Date().toISOString()
             }
 
-            console.log('📝 Inserting upgrade request:', upgradeData)
+            console.log('📝 Inserting upgrade request with user_id:', user.id)
+            console.log('📝 Full upgrade data:', upgradeData)
 
             const { error: insertError, data: insertedRequest } = await supabase
                 .from('upgrade_requests')
