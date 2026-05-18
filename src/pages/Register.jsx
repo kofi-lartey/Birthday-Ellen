@@ -46,30 +46,26 @@ function Register() {
         else setPasswordStrength({ score: 0, label: '', color: '', percent: 0 })
     }, [password])
 
-    // Send OTP to email
-    async function sendOTP() {
+    // Resend OTP (only for resend, not initial send)
+    async function resendOTP() {
         setError('')
         setIsLoading(true)
 
         try {
-            const { data, error } = await supabase.auth.signInWithOtp({
+            const { error } = await supabase.auth.signInWithOtp({
                 email: email.trim().toLowerCase(),
-                options: {
-                    shouldCreateUser: true,
-                    data: {
-                        full_name: name.trim(),
-                        phone: phone.trim()
-                    }
-                }
             })
 
             if (error) throw error
 
-            setShowOtpInput(true)
             startCountdown()
 
         } catch (err) {
-            setError(err.message || 'Failed to send verification code. Please try again.')
+            if (err.message.includes('rate limit')) {
+                setError('Please wait before requesting another code.')
+            } else {
+                setError(err.message || 'Failed to resend code. Please try again.')
+            }
         } finally {
             setIsLoading(false)
         }
@@ -200,10 +196,10 @@ function Register() {
         setIsLoading(true)
 
         try {
-            // FIRST: Create the user with password in Supabase Auth
+            // Create the user with password - Supabase will automatically send OTP/confirmation email
             const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
                 email: email.trim().toLowerCase(),
-                password: password,  // This creates the user with a password
+                password: password,
                 options: {
                     data: {
                         full_name: name.trim(),
@@ -223,8 +219,9 @@ function Register() {
             }
 
             if (signUpData?.user) {
-                // Send OTP for email verification
-                await sendOTP()
+                // Show OTP input screen - Supabase already sent the OTP via email
+                setShowOtpInput(true)
+                startCountdown()
             }
 
         } catch (err) {
@@ -245,7 +242,6 @@ function Register() {
             <div className="max-w-md w-full">
                 <div className="bg-white rounded-3xl shadow-2xl p-8">
                     {showOtpInput ? (
-                        // OTP Verification Screen
                         verificationSuccess ? (
                             <div className="text-center">
                                 <div className="text-6xl mb-4 animate-bounce">✅</div>
@@ -300,7 +296,7 @@ function Register() {
                                     </button>
 
                                     <button
-                                        onClick={sendOTP}
+                                        onClick={resendOTP}
                                         disabled={countdown > 0 || isLoading}
                                         className="w-full bg-gray-100 text-gray-700 py-4 rounded-xl font-semibold hover:bg-gray-200 transition disabled:opacity-50"
                                     >
@@ -316,7 +312,7 @@ function Register() {
                             </div>
                         )
                     ) : (
-                        // Registration Form
+                        // Registration Form (same as before)
                         <>
                             <div className="text-center mb-8">
                                 <div className="text-6xl mb-4">🎉</div>
@@ -435,7 +431,6 @@ function Register() {
                                         </button>
                                     </div>
 
-                                    {/* Password Strength Meter */}
                                     {password && (
                                         <div className="mt-2">
                                             <div className="flex items-center gap-2 mb-1">
@@ -446,9 +441,9 @@ function Register() {
                                                     />
                                                 </div>
                                                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${passwordStrength.label === 'Strong' ? 'bg-green-100 text-green-700' :
-                                                        passwordStrength.label === 'Good' ? 'bg-blue-100 text-blue-700' :
-                                                            passwordStrength.label === 'Fair' ? 'bg-yellow-100 text-yellow-700' :
-                                                                'bg-red-100 text-red-700'
+                                                    passwordStrength.label === 'Good' ? 'bg-blue-100 text-blue-700' :
+                                                        passwordStrength.label === 'Fair' ? 'bg-yellow-100 text-yellow-700' :
+                                                            'bg-red-100 text-red-700'
                                                     }`}>
                                                     {passwordStrength.label}
                                                 </span>
@@ -539,7 +534,7 @@ function Register() {
                                     {isLoading ? (
                                         <div className="flex items-center justify-center gap-2">
                                             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                            Sending Code...
+                                            Creating Account...
                                         </div>
                                     ) : (
                                         'Create Account'
