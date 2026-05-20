@@ -21,15 +21,16 @@ function Slideshow() {
     const [audioInitialized, setAudioInitialized] = useState(false)
     const [isBulkDownloading, setIsBulkDownloading] = useState(false)
     const [bulkDownloadProgress, setBulkDownloadProgress] = useState(0)
-     const [orderConfig, setOrderConfig] = useState(null)
-     const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024)
-     const [eventType, setEventType] = useState('birthday')
-     const isMobile = window.innerWidth < 768
+    const [orderConfig, setOrderConfig] = useState(null)
+    const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024)
+    const [eventType, setEventType] = useState('birthday')
+    const isMobile = window.innerWidth < 768
 
-     const intervalRef = useRef(null)
+    const intervalRef = useRef(null)
     const progressRef = useRef(null)
     const musicRef = useRef(null)
     const [popAnimationKey, setPopAnimationKey] = useState(0)
+    const [orderLoaded, setOrderLoaded] = useState(false)
 
     // Get event-specific text based on type
     const getEventText = () => {
@@ -81,7 +82,10 @@ function Slideshow() {
     }
 
     const eventText = getEventText()
-    const celebrantName = orderConfig?.recipient_name || orderConfig?.nickname || orderConfig?.couple_names || eventText.defaultCelebrant
+    // Only show actual celebrant name after order is loaded
+    const celebrantName = orderLoaded && orderConfig
+        ? (orderConfig?.recipient_name || orderConfig?.nickname || orderConfig?.couple_names || '')
+        : ''
 
     // Load app icon helper
     async function loadAppIcon() {
@@ -91,17 +95,6 @@ function Slideshow() {
             img.onload = () => resolve(img)
             img.onerror = () => resolve(null)
             img.src = APP_ICON_URL
-        })
-    }
-
-    // Helper function to load images
-    function loadImage(src) {
-        return new Promise((resolve, reject) => {
-            const img = new Image()
-            img.crossOrigin = 'anonymous'
-            img.onload = () => resolve(img)
-            img.onerror = reject
-            img.src = src
         })
     }
 
@@ -159,6 +152,7 @@ function Slideshow() {
                     letter: registryData.letter,
                     nickname: registryData.nickname
                 })
+                setOrderLoaded(true)
                 return
             }
 
@@ -167,6 +161,7 @@ function Slideshow() {
             if (localOrder) {
                 setEventType(localOrder.event_type || 'birthday')
                 setOrderConfig(normalizeOrder(localOrder))
+                setOrderLoaded(true)
                 return
             }
 
@@ -178,9 +173,11 @@ function Slideshow() {
             if (data && data.length > 0) {
                 setEventType(data[0].event_type || 'birthday')
                 setOrderConfig(data[0])
+                setOrderLoaded(true)
             }
         } catch (err) {
             console.log('Error loading order config:', err)
+            setOrderLoaded(true)
         }
     }
 
@@ -254,7 +251,7 @@ function Slideshow() {
         if (isPlaying && slides.length > 0) {
             intervalRef.current = setInterval(() => {
                 setCurrentIndex(prev => (prev + 1) % slides.length)
-            }, 4000)
+            }, 5000)
         }
         return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
     }, [isPlaying, slides.length])
@@ -451,7 +448,6 @@ function Slideshow() {
                 let startY = boxY + padding + nameFontSize + padding / 2
                 messageLines.forEach(line => { ctx.fillText(line, canvas.width / 2, startY); startY += lineHeight })
 
-                // Add TikTok-style watermark to downloaded image
                 if (appIcon) {
                     const watermarkSize = canvas.width * 0.08
                     const watermarkX = canvas.width - watermarkSize - 15
@@ -485,12 +481,12 @@ function Slideshow() {
         })
     }
 
-    // ========== FIXED VIDEO RENDERING FUNCTIONS WITH WATERMARK ==========
+    // ========== VIDEO RENDERING FUNCTIONS ==========
 
     async function ensureAudioContext() {
         const AudioContext = window.AudioContext || window.webkitAudioContext
         const audioCtx = new AudioContext()
-        
+
         if (audioCtx.state === 'suspended') {
             const silentBuffer = audioCtx.createBuffer(1, 1, 22050)
             const source = audioCtx.createBufferSource()
@@ -500,604 +496,386 @@ function Slideshow() {
             source.stop(0.1)
             await audioCtx.resume()
         }
-        
+
         return audioCtx
     }
 
-     async function drawTikTokWatermark(
-         ctx,
-         appIcon,
-         width,
-         height,
-         frame
-     ) {
-         if (!appIcon) return;
+    // Simple watermark - fixed position at bottom right, semi-transparent (NO TEXT)
+    // Moving watermark - slides across the screen like TikTok style
+    async function drawTikTokWatermark(ctx, appIcon, width, height, frame) {
+        if (!appIcon) return;
 
-         const size = width * 0.075;
-         const margin = 20;
+        const size = width * 0.08; // Small watermark
+        const margin = 15;
 
-         // move watermark every few frames
-         const positionIndex = Math.floor(frame / 180) % 4;
+        // Animated path: moves from corners around the screen
+        const cycleDuration = 600; // frames for full cycle
+        const cycleProgress = (frame % cycleDuration) / cycleDuration;
 
-         let x = margin;
-         let y = margin;
+        let x, y;
 
-         switch (positionIndex) {
-             case 0:
-                 x = margin;
-                 y = margin;
-                 break;
+        // Path: top-left -> top-right -> bottom-right -> bottom-left -> repeat
+        if (cycleProgress < 0.25) {
+            // Top edge: left to right
+            const t = cycleProgress / 0.25;
+            x = margin + (width - size - margin * 2) * t;
+            y = margin;
+        } else if (cycleProgress < 0.5) {
+            // Right edge: top to bottom
+            const t = (cycleProgress - 0.25) / 0.25;
+            x = width - size - margin;
+            y = margin + (height - size - margin * 2) * t;
+        } else if (cycleProgress < 0.75) {
+            // Bottom edge: right to left
+            const t = (cycleProgress - 0.5) / 0.25;
+            x = width - size - margin - (width - size - margin * 2) * t;
+            y = height - size - margin;
+        } else {
+            // Left edge: bottom to top
+            const t = (cycleProgress - 0.75) / 0.25;
+            x = margin;
+            y = height - size - margin - (height - size - margin * 2) * t;
+        }
 
-             case 1:
-                 x = width - size - margin;
-                 y = margin;
-                 break;
+        // Subtle pulse effect
+        const pulseScale = 1 + Math.sin(frame * 0.1) * 0.05;
 
-             case 2:
-                 x = width - size - margin;
-                 y = height - size - margin;
-                 break;
+        ctx.save();
+        ctx.translate(x + size / 2, y + size / 2);
+        ctx.scale(pulseScale, pulseScale);
+        ctx.translate(-(x + size / 2), -(y + size / 2));
 
-             case 3:
-                 x = margin;
-                 y = height - size - margin;
-                 break;
-         }
+        // Background circle with glow
+        ctx.beginPath();
+        ctx.arc(x + size / 2, y + size / 2, size / 2 + 4, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.fill();
 
-         // subtle opacity animation
-         const opacity = 0.75 + Math.sin(frame * 0.03) * 0.1;
+        // Outer ring
+        ctx.beginPath();
+        ctx.arc(x + size / 2, y + size / 2, size / 2 + 6, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255, 107, 157, 0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
 
-         ctx.save();
+        // Draw logo
+        ctx.globalAlpha = 0.85;
+        ctx.drawImage(appIcon, x, y, size, size);
 
-         ctx.globalAlpha = opacity;
+        ctx.restore();
+    }
 
-         // subtle background circle
-         ctx.beginPath();
+    // Draw designer credit on intro and outro
+    function drawDesignerCredit(ctx, width, height, frame) {
+        const alpha = 0.35 + Math.sin(frame * 0.03) * 0.1;
+        ctx.font = `${isMobile ? 12 : 14}px "Poppins", sans-serif`;
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.textAlign = 'center';
+        ctx.fillText('Designed by KofiLartey', width / 2, height - 20);
+    }
 
-         ctx.arc(
-             x + size / 2,
-             y + size / 2,
-             size / 2 + 4,
-             0,
-             Math.PI * 2
-         );
-
-         ctx.fillStyle = 'rgba(0,0,0,0.35)';
-         ctx.fill();
-
-         // draw logo
-         ctx.drawImage(appIcon, x, y, size, size);
-
-         ctx.restore();
-     }
-
-     async function renderIntro(ctx, width, height, fps, totalFrames) {
+    // Intro render
+    async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
         const appIcon = await loadAppIcon()
-
-        const particles = []
-        const particleCount = 35
-
-        const particleTypes = {
-            birthday: ['❤️', '🎂', '🎈', '🎁', '✨', '🎉', '🎊', '💝'],
-            wedding: ['💍', '💒', '💕', '🌸', '✨', '💖', '🥂', '🌹', '🎊'],
-            anniversary: ['💕', '❤️', '💖', '💗', '💝', '💘', '🌹', '✨', '🎉', '💐'],
-            party: ['🎉', '🎈', '🎊', '🪅', '✨', '💃', '🕺', '🎶', '🥳', '🎸'],
-            hangout: ['👋', '😎', '✨', '🎮', '🍕', '🎵', '💬', '🎉', '🍔', '🎧'],
-            other: ['✨', '🎉', '💫', '⭐', '🌟', '🎈', '🎊', '❤️', '💕', '🎀']
-        }
-        const particleEmojis = particleTypes[eventType] || particleTypes.birthday
-
-        for (let i = 0; i < particleCount; i++) {
-            particles.push({
-                x: Math.random() * width,
-                y: Math.random() * height,
-                size: 15 + Math.random() * 35,
-                speedX: (Math.random() - 0.5) * 2,
-                speedY: 0.8 + Math.random() * 1.8,
-                opacity: 0.3 + Math.random() * 0.7,
-                rotation: Math.random() * 360,
-                rotationSpeed: (Math.random() - 0.5) * 4,
-                type: particleEmojis[Math.floor(Math.random() * particleEmojis.length)],
-                waveOffset: Math.random() * Math.PI * 2,
-                waveSpeed: 0.02 + Math.random() * 0.03
-            })
-        }
-
-        const sparkles = []
-        const sparkleCount = 40
-        for (let i = 0; i < sparkleCount; i++) {
-            sparkles.push({
-                x: Math.random() * width,
-                y: Math.random() * height,
-                size: 2 + Math.random() * 4,
-                speed: 0.5 + Math.random() * 1.5,
-                phase: Math.random() * Math.PI * 2,
-                twinkleSpeed: 0.05 + Math.random() * 0.1
-            })
-        }
-
-        let offsetX = 0, offsetY = 0
 
         for (let i = 0; i < totalFrames; i++) {
             const progress = i / totalFrames
             const easeProgress = 1 - Math.pow(1 - progress, 3)
-            const easeInOut = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2
 
-            offsetX = Math.sin(i * 0.02) * 60
-            offsetY = Math.cos(i * 0.03) * 40
-
-            const grad = ctx.createLinearGradient(
-                width / 2 + offsetX, 0,
-                width / 2 - offsetX, height
-            )
-
-            if (eventType === 'birthday') {
-                grad.addColorStop(0, '#0f0c29')
-                grad.addColorStop(0.5, '#302b63')
-                grad.addColorStop(1, '#24243e')
-            } else if (eventType === 'wedding') {
-                grad.addColorStop(0, '#1a0b2e')
-                grad.addColorStop(0.5, '#4a1942')
-                grad.addColorStop(1, '#893168')
-            } else if (eventType === 'anniversary') {
-                grad.addColorStop(0, '#1a0a1a')
-                grad.addColorStop(0.5, '#3d1a3d')
-                grad.addColorStop(1, '#6b2d5c')
-            } else {
-                grad.addColorStop(0, '#0f0c29')
-                grad.addColorStop(0.5, '#302b63')
-                grad.addColorStop(1, '#24243e')
-            }
-
+            // Background gradient
+            const grad = ctx.createLinearGradient(width / 2, 0, width / 2, height)
+            grad.addColorStop(0, '#1a1a2e')
+            grad.addColorStop(1, '#0a0a0a')
             ctx.fillStyle = grad
             ctx.fillRect(0, 0, width, height)
 
-            sparkles.forEach(sparkle => {
-                const twinkle = 0.3 + 0.7 * (Math.sin(i * sparkle.twinkleSpeed + sparkle.phase) + 1) / 2
-                ctx.beginPath()
-                ctx.arc(sparkle.x, sparkle.y, sparkle.size * (0.5 + twinkle * 0.5), 0, Math.PI * 2)
-                ctx.fillStyle = `rgba(255, 255, 200, ${twinkle * 0.6})`
-                ctx.fill()
-            })
-
-            particles.forEach(p => {
-                const waveX = Math.sin(i * p.waveSpeed + p.waveOffset) * 20
-                p.x += p.speedX + waveX * 0.05
-                p.y += p.speedY
-                p.rotation += p.rotationSpeed
-
-                if (p.y < -50) {
-                    p.y = height + 50
-                    p.x = Math.random() * width
-                }
-                if (p.x < -50) p.x = width + 50
-                if (p.x > width + 50) p.x = -50
-
+            // Add particles
+            const particleCount = isMobile ? 15 : 35
+            for (let p = 0; p < particleCount; p++) {
+                const seed = 100 + p * 23
+                const px = (seed * 37 + i * 0.5) % (width + 100) - 50
+                const py = ((seed * 53 + i * 0.8) % (height + 100)) - 50
                 ctx.save()
-                ctx.translate(p.x, p.y)
-                ctx.rotate(p.rotation * Math.PI / 180)
-                const pulse = 0.5 + 0.5 * Math.sin(i * 0.05 + p.x * 0.01)
-                ctx.globalAlpha = p.opacity * (0.6 + 0.4 * pulse)
-                const scale = 0.8 + 0.4 * Math.sin(i * 0.08)
-                ctx.scale(scale, scale)
-                ctx.font = `${p.size}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`
+                ctx.globalAlpha = 0.3 + (seed % 40) / 100
+                ctx.font = `${15 + (seed % 21)}px "Segoe UI Emoji"`
                 ctx.fillStyle = '#ff6b9d'
-                ctx.fillText(p.type, 0, 0)
+                const emojis = ['❤️', '🎂', '🎈', '✨', '🎉', '💝']
+                ctx.fillText(emojis[seed % emojis.length], px, py)
                 ctx.restore()
-            })
-
-            for (let c = 0; c < 3; c++) {
-                const circleScale = 0.5 + Math.sin(i * 0.02 + c) * 0.3
-                const circleX = width / 2 + Math.sin(i * 0.01 + c) * 100
-                const circleY = height / 2 + Math.cos(i * 0.015 + c) * 100
-                ctx.beginPath()
-                ctx.arc(circleX, circleY, 50 * circleScale, 0, Math.PI * 2)
-                ctx.fillStyle = `rgba(255, 100, 150, ${0.05 * (1 + Math.sin(i * 0.03))})`
-                ctx.fill()
             }
 
+            // Title text
             const scale = 0.5 + easeProgress * 0.6
             const alpha = Math.min(1, progress * 2)
-            const yOffset = -20 * (1 - easeProgress)
 
             ctx.save()
             ctx.shadowColor = 'rgba(255, 105, 180, 0.6)'
-            ctx.shadowBlur = 30
-            ctx.translate(width / 2, height / 2 - 40 + yOffset)
+            ctx.shadowBlur = 25
+            ctx.translate(width / 2, height / 2)
             ctx.scale(scale, scale)
             ctx.globalAlpha = alpha
 
-            const textGrad = ctx.createLinearGradient(-200, 0, 200, 0)
-            textGrad.addColorStop(0, '#f9c1d9')
-            textGrad.addColorStop(0.3, '#ff9eb5')
-            textGrad.addColorStop(0.7, '#ff6b9d')
-            textGrad.addColorStop(1, '#f9c1d9')
-            ctx.fillStyle = textGrad
+            const titleFontSize = isMobile ? Math.min(45, width * 0.1) : 80
+            const nameFontSize = isMobile ? Math.min(40, width * 0.09) : 70
 
-            ctx.font = 'bold 80px "Playfair Display", "Poppins", serif'
+            ctx.font = `bold ${titleFontSize}px "Playfair Display", serif`
+            ctx.fillStyle = '#ff6b9d'
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
             ctx.fillText(eventText.title, 0, -30)
 
-            const bounce = Math.sin(i * 0.15) * 8
-            const secondScale = 0.9 + Math.sin(i * 0.1) * 0.05
-            ctx.font = `bold ${85 * secondScale}px "Dancing Script", "Playfair Display", cursive`
-            ctx.fillStyle = '#fff3e6'
-            ctx.shadowBlur = 25
-            ctx.fillText(`${celebrantName} ${eventText.emoji}`, 0, 100 + bounce)
+            ctx.font = `bold ${nameFontSize}px "Dancing Script", cursive`
+            ctx.fillStyle = '#fff'
+            ctx.fillText(`${celebrantName} ${eventText.emoji}`, 0, 50)
             ctx.restore()
 
-              // Add watermark to intro
-             await drawTikTokWatermark(ctx, appIcon, width, height, i)
+            // Add designer credit
+            // drawDesignerCredit(ctx, width, height, i)
 
-             if (progress > 0.3 && progress < 0.7 && i % 10 === 0) {
-                for (let b = 0; b < 5; b++) {
-                    const angle = Math.random() * Math.PI * 2
-                    const radius = 100 + Math.random() * 150
-                    const x = width / 2 + Math.cos(angle) * radius
-                    const y = height / 2 + Math.sin(angle) * radius
-                    ctx.save()
-                    ctx.translate(x, y)
-                    ctx.globalAlpha = 0.6
-                    ctx.font = `${20 + Math.random() * 15}px "Segoe UI Emoji"`
-                    ctx.fillStyle = '#ffd700'
-                    ctx.fillText('✨', 0, 0)
-                    ctx.restore()
-                }
-            }
+            // Add watermark
+            await drawTikTokWatermark(ctx, appIcon, width, height, startFrame + i)
 
-            const borderProgress = easeInOut
-            const borderWidth = width * 0.02
-            ctx.save()
-            ctx.globalAlpha = borderProgress * 0.8
-            ctx.strokeStyle = '#ff6b9d'
-            ctx.lineWidth = borderWidth
-            ctx.strokeRect(borderWidth, borderWidth, width - borderWidth * 2, height - borderWidth * 2)
-
-            const cornerSize = 40
-            ctx.beginPath()
-            ctx.moveTo(borderWidth, borderWidth + cornerSize)
-            ctx.lineTo(borderWidth, borderWidth)
-            ctx.lineTo(borderWidth + cornerSize, borderWidth)
-            ctx.stroke()
-
-            ctx.beginPath()
-            ctx.moveTo(width - borderWidth, borderWidth + cornerSize)
-            ctx.lineTo(width - borderWidth, borderWidth)
-            ctx.lineTo(width - borderWidth - cornerSize, borderWidth)
-            ctx.stroke()
-
-            ctx.beginPath()
-            ctx.moveTo(borderWidth, height - borderWidth - cornerSize)
-            ctx.lineTo(borderWidth, height - borderWidth)
-            ctx.lineTo(borderWidth + cornerSize, height - borderWidth)
-            ctx.stroke()
-
-            ctx.beginPath()
-            ctx.moveTo(width - borderWidth, height - borderWidth - cornerSize)
-            ctx.lineTo(width - borderWidth, height - borderWidth)
-            ctx.lineTo(width - borderWidth - cornerSize, height - borderWidth)
-            ctx.stroke()
-            ctx.restore()
-
-             if (!isMobile) {
-                 await new Promise(r => setTimeout(r, 1000 / fps))
-             }
-         }
-     }
-
-     async function renderSlideForVideo(ctx, width, height, slide, slideNumber, totalSlides, globalFrame = 0, fps, frames) {
-         const img = new Image()
-         img.crossOrigin = "anonymous"
-         await new Promise(resolve => { img.onload = resolve; img.src = slide.photo })
-
-         const appIcon = await loadAppIcon()
-
-         for (let frame = 0; frame < frames; frame++) {
-            ctx.clearRect(0, 0, width, height)
-
-            const imgRatio = img.width / img.height
-            const canvasRatio = width / height
-            let sx = 0, sy = 0, sw = img.width, sh = img.height
-            if (imgRatio > canvasRatio) {
-                sw = img.height * canvasRatio
-                sx = (img.width - sw) / 2
-            } else {
-                sh = img.width / canvasRatio
-                sy = (img.height - sh) / 2
-            }
-            ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height)
-
-            const vignette = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, width / 1.5)
-            vignette.addColorStop(0, 'rgba(0,0,0,0)')
-            vignette.addColorStop(0.7, 'rgba(0,0,0,0.2)')
-            vignette.addColorStop(1, 'rgba(0,0,0,0.6)')
-            ctx.fillStyle = vignette
-            ctx.fillRect(0, 0, width, height)
-
-            const padding = width * 0.04
-            const nameFontSize = width * 0.045
-            const messageFontSize = width * 0.03
-            const lineHeight = messageFontSize * 1.4
-
-            function wrapText(text, maxWidth) {
-                const words = text.split(' ')
-                const lines = []
-                let line = ''
-                for (let word of words) {
-                    const testLine = line + word + ' '
-                    if (ctx.measureText(testLine).width > maxWidth && line !== '') {
-                        lines.push(line.trim())
-                        line = word + ' '
-                    } else {
-                        line = testLine
-                    }
-                }
-                lines.push(line.trim())
-                return lines
-            }
-
-            const msgLines = wrapText(slide.message, width * 0.7)
-            const barHeight = padding * 2 + nameFontSize + (msgLines.length * lineHeight) + padding
-            const barWidth = width * 0.8
-            const barX = (width - barWidth) / 2
-            const barY = height - barHeight - 40
-            const radius = width * 0.02
-
-            ctx.beginPath()
-            ctx.moveTo(barX + radius, barY)
-            ctx.lineTo(barX + barWidth - radius, barY)
-            ctx.quadraticCurveTo(barX + barWidth, barY, barX + barWidth, barY + radius)
-            ctx.lineTo(barX + barWidth, barY + barHeight - radius)
-            ctx.quadraticCurveTo(barX + barWidth, barY + barHeight, barX + barWidth - radius, barY + barHeight)
-            ctx.lineTo(barX + radius, barY + barHeight)
-            ctx.quadraticCurveTo(barX, barY + barHeight, barX, barY + barHeight - radius)
-            ctx.lineTo(barX, barY + radius)
-            ctx.quadraticCurveTo(barX, barY, barX + radius, barY)
-            ctx.closePath()
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.65)'
-            ctx.fill()
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'
-            ctx.lineWidth = 1.5
-            ctx.stroke()
-
-            const nameGrad = ctx.createLinearGradient(barX + 50, barY + padding, barX + barWidth - 50, barY + padding + nameFontSize)
-            nameGrad.addColorStop(0, '#f9c1d9')
-            nameGrad.addColorStop(1, '#ff6b9d')
-            ctx.fillStyle = nameGrad
-            ctx.font = `600 ${nameFontSize}px "Poppins", sans-serif`
-            ctx.shadowColor = 'rgba(0,0,0,0.5)'
-            ctx.shadowBlur = 8
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'top'
-            ctx.fillText(slide.name, width / 2, barY + padding)
-
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
-            ctx.font = `${messageFontSize}px "Poppins", sans-serif`
-            ctx.shadowBlur = 4
-            let yOffset = barY + padding + nameFontSize + 10
-            for (let line of msgLines) {
-                ctx.fillText(line, width / 2, yOffset)
-                yOffset += lineHeight
-            }
-
-            ctx.textAlign = 'right'
-            ctx.font = `bold ${width * 0.025}px "Poppins", sans-serif`
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
-            ctx.fillText(`${slideNumber}/${totalSlides}`, width - 20, 30)
-
-            ctx.textAlign = 'left'
-            ctx.font = `${width * 0.018}px "Poppins", sans-serif`
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'
-            ctx.fillText('Designed by KofiLartey', 20, height - 20)
-
-             // ========== TIKTOK WATERMARK ==========
-             await drawTikTokWatermark(ctx, appIcon, width, height, globalFrame + frame)
-
-             ctx.shadowBlur = 0
-             await new Promise(r => setTimeout(r, 1000 / fps))
+            await new Promise(r => setTimeout(r, 1000 / 30))
         }
     }
 
-     async function renderOutro(ctx, width, height, fps, totalFrames) {
+    // Slide render with glass morphism text box (like slideshow)
+    async function renderSlide(ctx, width, height, slide, slideNumber, totalSlides, globalFrame, frames) {
+        const img = new Image()
+        img.crossOrigin = "anonymous"
+        await new Promise(resolve => { img.onload = resolve; img.src = slide.photo })
         const appIcon = await loadAppIcon()
 
-        const stars = []
-        for (let s = 0; s < 30; s++) {
-            stars.push({
-                x: Math.random() * width,
-                y: Math.random() * height,
-                size: 2 + Math.random() * 4,
-                twinkle: Math.random() * Math.PI * 2,
-                speed: 0.05 + Math.random() * 0.1
-            })
-        }
+        for (let frame = 0; frame < frames; frame++) {
+            ctx.clearRect(0, 0, width, height)
 
-        const hearts = []
-        const outroEmojis = {
-            birthday: ['🎂', '🎈', '❤️'],
-            wedding: ['💍', '💒', '🌸'],
-            anniversary: ['💕', '❤️', '🌹'],
-            party: ['🎉', '🎈', '🎊'],
-            hangout: ['👋', '😎', '✨'],
-            other: ['✨', '🎉', '💫']
-        }
-        const emojiList = outroEmojis[eventType] || outroEmojis.birthday
+            // Draw image with Ken Burns effect (subtle zoom)
+            const progress = frame / frames
+            const zoom = 1 + Math.sin(progress * Math.PI) * 0.03
+            const panX = Math.sin(progress * Math.PI) * 10
+            const panY = Math.cos(progress * Math.PI) * 10
 
-        for (let h = 0; h < 12; h++) {
-            hearts.push({
-                x: Math.random() * width,
-                y: Math.random() * height,
-                size: 20 + Math.random() * 30,
-                speed: 0.5 + Math.random() * 1.2,
-                opacity: 0.4 + Math.random() * 0.5,
-                rotation: Math.random() * 360,
-                rotSpeed: (Math.random() - 0.5) * 2,
-                emoji: emojiList[Math.floor(Math.random() * emojiList.length)]
-            })
+            const imgRatio = img.width / img.height
+            const canvasRatio = width / height
+
+            let drawWidth = width * zoom
+            let drawHeight = height * zoom
+            let drawX = (width - drawWidth) / 2 + panX
+            let drawY = (height - drawHeight) / 2 + panY
+
+            if (imgRatio > canvasRatio) {
+                drawHeight = drawWidth / imgRatio
+                drawY = (height - drawHeight) / 2 + panY
+            } else {
+                drawWidth = drawHeight * imgRatio
+                drawX = (width - drawWidth) / 2 + panX
+            }
+
+            ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight)
+
+            // Dark vignette overlay for text readability (lighter than before)
+            const vignette = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, width / 1.3)
+            vignette.addColorStop(0, 'rgba(0,0,0,0.2)')
+            vignette.addColorStop(0.6, 'rgba(0,0,0,0.4)')
+            vignette.addColorStop(1, 'rgba(0,0,0,0.7)')
+            ctx.fillStyle = vignette
+            ctx.fillRect(0, 0, width, height)
+
+            // GLASS MORPHISM MESSAGE BOX (like the slideshow)
+            const boxHeight = isMobile ? Math.min(110, height * 0.14) : 130
+            const boxY = height - boxHeight - (isMobile ? 20 : 30)
+            const padding = isMobile ? 18 : 24
+            const borderRadius = 24
+
+            // Glass background with blur effect simulation (gradient + semi-transparent)
+            const glassGradient = ctx.createLinearGradient(0, boxY, 0, boxY + boxHeight)
+            glassGradient.addColorStop(0, 'rgba(45, 10, 19, 0.75)')
+            glassGradient.addColorStop(0.5, 'rgba(107, 26, 46, 0.7)')
+            glassGradient.addColorStop(1, 'rgba(196, 59, 92, 0.65)')
+            ctx.fillStyle = glassGradient
+
+            // Rounded rectangle
+            ctx.beginPath()
+            ctx.moveTo(borderRadius, boxY)
+            ctx.lineTo(width - borderRadius, boxY)
+            ctx.quadraticCurveTo(width, boxY, width, boxY + borderRadius)
+            ctx.lineTo(width, boxY + boxHeight - borderRadius)
+            ctx.quadraticCurveTo(width, boxY + boxHeight, width - borderRadius, boxY + boxHeight)
+            ctx.lineTo(borderRadius, boxY + boxHeight)
+            ctx.quadraticCurveTo(0, boxY + boxHeight, 0, boxY + boxHeight - borderRadius)
+            ctx.lineTo(0, boxY + borderRadius)
+            ctx.quadraticCurveTo(0, boxY, borderRadius, boxY)
+            ctx.closePath()
+            ctx.fill()
+
+            // Glass border glow
+            ctx.beginPath()
+            ctx.moveTo(borderRadius, boxY)
+            ctx.lineTo(width - borderRadius, boxY)
+            ctx.quadraticCurveTo(width, boxY, width, boxY + borderRadius)
+            ctx.lineTo(width, boxY + boxHeight - borderRadius)
+            ctx.quadraticCurveTo(width, boxY + boxHeight, width - borderRadius, boxY + boxHeight)
+            ctx.lineTo(borderRadius, boxY + boxHeight)
+            ctx.quadraticCurveTo(0, boxY + boxHeight, 0, boxY + boxHeight - borderRadius)
+            ctx.lineTo(0, boxY + borderRadius)
+            ctx.quadraticCurveTo(0, boxY, borderRadius, boxY)
+            ctx.closePath()
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'
+            ctx.lineWidth = 1.5
+            ctx.stroke()
+
+            // Inner glow effect
+            ctx.beginPath()
+            ctx.moveTo(borderRadius + 2, boxY + 2)
+            ctx.lineTo(width - borderRadius - 2, boxY + 2)
+            ctx.quadraticCurveTo(width - 2, boxY + 2, width - 2, boxY + borderRadius + 2)
+            ctx.lineTo(width - 2, boxY + boxHeight - borderRadius - 2)
+            ctx.quadraticCurveTo(width - 2, boxY + boxHeight - 2, width - borderRadius - 2, boxY + boxHeight - 2)
+            ctx.lineTo(borderRadius + 2, boxY + boxHeight - 2)
+            ctx.quadraticCurveTo(2, boxY + boxHeight - 2, 2, boxY + boxHeight - borderRadius - 2)
+            ctx.lineTo(2, boxY + borderRadius + 2)
+            ctx.quadraticCurveTo(2, boxY + 2, borderRadius + 2, boxY + 2)
+            ctx.closePath()
+            ctx.strokeStyle = 'rgba(255, 200, 220, 0.1)'
+            ctx.lineWidth = 1
+            ctx.stroke()
+
+            // Name text with gradient
+            const nameFontSize = isMobile ? Math.min(22, width * 0.05) : 30
+            const nameGrad = ctx.createLinearGradient(width / 2 - 100, boxY + padding, width / 2 + 100, boxY + padding + nameFontSize)
+            nameGrad.addColorStop(0, '#f9c1d9')
+            nameGrad.addColorStop(0.5, '#ff9eb5')
+            nameGrad.addColorStop(1, '#ff6b9d')
+            ctx.fillStyle = nameGrad
+            ctx.font = `bold ${nameFontSize}px "Playfair Display", "Poppins", serif`
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)'
+            ctx.shadowBlur = 8
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'top'
+            ctx.fillText(slide.name, width / 2, boxY + padding)
+
+            // Message text with subtle shadow
+            const messageFontSize = isMobile ? Math.min(15, width * 0.038) : 20
+            ctx.font = `${messageFontSize}px "Poppins", sans-serif`
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
+            ctx.shadowBlur = 4
+            let message = slide.message
+            const maxChars = isMobile ? 70 : 120
+            if (message.length > maxChars) {
+                message = message.substring(0, maxChars - 3) + '...'
+            }
+            ctx.fillText(message, width / 2, boxY + padding + nameFontSize + 8)
+
+            // Slide counter with glass style
+            ctx.font = `${isMobile ? 12 : 14}px monospace`
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)'
+            ctx.shadowBlur = 2
+            ctx.textAlign = 'right'
+            ctx.fillText(`${slideNumber}/${totalSlides}`, width - 20, 35)
+
+            // Add moving watermark
+            await drawTikTokWatermark(ctx, appIcon, width, height, globalFrame + frame)
+
+            await new Promise(r => setTimeout(r, 1000 / 30))
         }
+    }
+
+    // Outro render
+    async function renderOutro(ctx, width, height, totalFrames, startFrame = 0) {
+        const appIcon = await loadAppIcon()
 
         for (let i = 0; i < totalFrames; i++) {
             const progress = i / totalFrames
 
-            const grad = ctx.createRadialGradient(
-                width / 2 + Math.sin(i * 0.02) * 30,
-                height / 2 + Math.cos(i * 0.03) * 20,
-                0,
-                width / 2,
-                height / 2,
-                width * 0.8
-            )
+            // Background gradient
+            const grad = ctx.createLinearGradient(0, 0, 0, height)
             grad.addColorStop(0, '#1a1a3e')
-            grad.addColorStop(0.6, '#0f0f23')
             grad.addColorStop(1, '#05050f')
             ctx.fillStyle = grad
             ctx.fillRect(0, 0, width, height)
 
-            stars.forEach(star => {
-                const twinkle = Math.sin(i * star.speed + star.twinkle) * 0.5 + 0.5
-                ctx.fillStyle = `rgba(255, 240, 200, ${twinkle * 0.8})`
-                ctx.beginPath()
-                ctx.arc(star.x, star.y, star.size * (0.5 + twinkle * 0.5), 0, Math.PI * 2)
-                ctx.fill()
-            })
-
-            hearts.forEach(heart => {
-                heart.y -= heart.speed
-                heart.rotation += heart.rotSpeed
-                if (heart.y < -50) {
-                    heart.y = height + 50
-                    heart.x = Math.random() * width
-                }
+            // Floating hearts
+            for (let h = 0; h < (isMobile ? 8 : 15); h++) {
+                const seed = 500 + h * 29
+                const hy = ((seed * 47 + i * 0.5) % (height + 100)) - 50
+                const hx = (seed * 137) % width
                 ctx.save()
-                ctx.translate(heart.x, heart.y)
-                ctx.rotate(heart.rotation * Math.PI / 180)
-                ctx.globalAlpha = heart.opacity * (0.7 + 0.3 * Math.sin(i * 0.05))
-                ctx.font = `${heart.size}px "Segoe UI Emoji", "Apple Color Emoji"`
+                ctx.globalAlpha = 0.3 + (seed % 10) / 25
+                ctx.font = `${20 + (seed % 11)}px "Segoe UI Emoji"`
                 ctx.fillStyle = '#ff6b9d'
-                ctx.fillText(heart.emoji, 0, 0)
+                ctx.fillText('❤️', hx, hy)
                 ctx.restore()
-            })
+            }
 
+            // Text animation
+            const alpha = Math.min(1, progress * 2)
+            const bounce = Math.sin(i * 0.1) * 5
+
+            ctx.save()
+            ctx.globalAlpha = alpha
+            ctx.translate(width / 2, height / 2 + bounce)
+
+            const thankFontSize = isMobile ? Math.min(40, width * 0.09) : 60
+            ctx.font = `bold ${thankFontSize}px "Playfair Display", serif`
+            ctx.fillStyle = '#ff9eb5'
             ctx.textAlign = 'center'
-            ctx.textBaseline = 'middle'
+            ctx.fillText('Thank You', 0, -50)
 
-            if (progress < 0.25) {
-                const fadeProgress = progress / 0.25
-                ctx.globalAlpha = Math.min(1, fadeProgress * 1.2)
+            const loveFontSize = isMobile ? Math.min(28, width * 0.065) : 40
+            ctx.font = `${loveFontSize}px "Dancing Script", cursive`
+            ctx.fillStyle = '#fff'
+            ctx.fillText('Made with Love', 0, 20)
 
-                ctx.save()
-                ctx.shadowColor = 'rgba(255, 105, 180, 0.8)'
-                ctx.shadowBlur = 25
-                const gradText = ctx.createLinearGradient(-200, 0, 200, 0)
-                gradText.addColorStop(0, '#ff9eb5')
-                gradText.addColorStop(0.5, '#ff6b9d')
-                gradText.addColorStop(1, '#ff9eb5')
-                ctx.fillStyle = gradText
-                ctx.font = 'bold 80px "Playfair Display", "Poppins", serif'
-                ctx.fillText('Thank You', width / 2, height / 2 - 40)
-                ctx.restore()
-            }
-            else if (progress < 0.5) {
-                const pulse = 1 + Math.sin(i * 0.2) * 0.03
-                ctx.globalAlpha = 1
-                ctx.save()
-                ctx.shadowColor = 'rgba(255, 105, 180, 0.8)'
-                ctx.shadowBlur = 25
-                const gradText = ctx.createLinearGradient(-200, 0, 200, 0)
-                gradText.addColorStop(0, '#ff9eb5')
-                gradText.addColorStop(0.5, '#ff6b9d')
-                gradText.addColorStop(1, '#ff9eb5')
-                ctx.fillStyle = gradText
-                ctx.font = `bold ${80 * pulse}px "Playfair Display", "Poppins", serif`
-                ctx.fillText('Thank You', width / 2, height / 2 - 40)
-                ctx.restore()
-            }
-            else if (progress < 0.6) {
-                const fadeProgress = (progress - 0.5) / 0.1
-                ctx.globalAlpha = 1 - fadeProgress
-                ctx.save()
-                ctx.shadowColor = 'rgba(255, 105, 180, 0.8)'
-                ctx.shadowBlur = 25
-                ctx.fillStyle = '#ff9eb5'
-                ctx.font = 'bold 80px "Playfair Display", "Poppins", serif'
-                ctx.fillText('Thank You', width / 2, height / 2 - 40)
-                ctx.restore()
-            }
-            else {
-                ctx.globalAlpha = 1
-                const bounce = Math.sin(i * 0.15) * 8
-                ctx.save()
-                ctx.shadowBlur = 15
-                ctx.shadowColor = 'rgba(255, 200, 100, 0.5)'
-                const loveGrad = ctx.createLinearGradient(-150, 0, 150, 0)
-                loveGrad.addColorStop(0, '#fbbf24')
-                loveGrad.addColorStop(0.5, '#ff9eb5')
-                loveGrad.addColorStop(1, '#fbbf24')
-                ctx.fillStyle = loveGrad
-                ctx.font = 'bold 56px "Dancing Script", "Poppins", cursive'
-                ctx.fillText('Made with Love', width / 2, height / 2 - 60 + bounce)
-                ctx.restore()
+            ctx.restore()
 
-                ctx.fillStyle = '#ffffff'
-                ctx.font = 'bold 32px "Poppins", sans-serif'
-                ctx.fillText(`${eventText.emoji} ${eventText.title}! 🎉`, width / 2, height / 2 + 20)
+            // Designer credit at bottom (appears after text fades in)
+            const creditAlpha = Math.min(0.7, progress * 1.5);
+            ctx.save();
+            ctx.globalAlpha = creditAlpha;
+            ctx.font = `${isMobile ? 14 : 18}px "Poppins", sans-serif`;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.textAlign = 'center';
+            ctx.fillText('Designed by KofiLartey', width / 2, height - 40);
+            ctx.restore();
 
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
-                ctx.font = 'bold 22px "Poppins", sans-serif'
-                ctx.fillText('Designed by KofiLartey', width / 2, height / 2 + 100)
+            // Add moving watermark
+            await drawTikTokWatermark(ctx, appIcon, width, height, startFrame + i)
 
-                const creditProgress = (progress - 0.6) / 0.4
-                if (creditProgress > 0.7) {
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'
-                    ctx.font = '18px "Poppins", sans-serif'
-                    ctx.fillText('✨ Forever in our hearts ✨', width / 2, height / 2 + 160)
-                }
-            }
+            await new Promise(r => setTimeout(r, 1000 / 30))
+        }
+    }
 
-            // Add watermark to outro
-            await drawTikTokWatermark(ctx, appIcon, width, height, i)
+    // ========== VIDEO EXPORT FUNCTION ==========
 
-            ctx.globalAlpha = 1
-            if (!isMobile) {
-                await new Promise(r => setTimeout(r, 1000 / fps))
-            }
-         }
-     }
+    async function exportVideo() {
+        // Disable video download on mobile
+        if (isMobile) {
+            alert('Video download is only available on desktop for better quality. Please use a desktop computer to download videos.');
+            return;
+        }
 
-    // ========== FIXED VIDEO EXPORT FUNCTION ==========
+        if (!slides.length) {
+            alert('No slides to export');
+            return;
+        }
 
-     async function exportVideo() {
-         if (!slides.length) {
-             alert('No slides to export');
-             return;
-         }
+        const audioUrl = orderConfig?.audio_url;
+        if (!audioUrl) {
+            alert('No background music configured for this page.');
+            return;
+        }
 
-         if (isMobile && slides.length > 20) {
-             alert('For best performance on mobile, limit exports to 20 slides.');
-             return;
-         }
+        setIsRecording(true);
+        setRecordingProgress(0);
 
-         const audioUrl = orderConfig?.audio_url;
-         if (!audioUrl) {
-             alert('No background music configured for this page.');
-             return;
-         }
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
 
-         setIsRecording(true);
-         setRecordingProgress(0);
-
-         const canvas = document.createElement('canvas');
-     const ctx = canvas.getContext('2d', {
-         alpha: false,
-         desynchronized: true,
-         willReadFrequently: false
-     });
-     const FPS = isMobile ? 15 : 30;
-     const width = isMobile ? 360 : 720;
-     const height = isMobile ? 640 : 1280;
-      canvas.width = width;
-      canvas.height = height;
+        // High quality resolution for desktop
+        const width = 720;
+        const height = 1280;
+        canvas.width = width;
+        canvas.height = height;
 
         let recorder = null;
         let audioElement = null;
@@ -1105,27 +883,22 @@ function Slideshow() {
         let audioDestination = null;
         let stream = null;
         let recordingChunks = [];
-        let frameIndex = 0;
 
         try {
-            // Setup audio context FIRST (critical for mobile)
+            // Setup audio
             audioContext = await ensureAudioContext();
-            
-            // Create audio element and connect to context
             audioElement = new Audio(audioUrl);
             audioElement.loop = true;
             audioElement.volume = 0.3;
             audioElement.crossOrigin = 'anonymous';
-            
+
             const source = audioContext.createMediaElementSource(audioElement);
             audioDestination = audioContext.createMediaStreamDestination();
             source.connect(audioDestination);
             source.connect(audioContext.destination);
-            
-            // Setup canvas stream
-            const canvasStream = canvas.captureStream(FPS);
-            
-            // Combine streams if we have audio
+
+            const canvasStream = canvas.captureStream(30);
+
             if (audioDestination.stream.getAudioTracks().length > 0) {
                 stream = new MediaStream([
                     ...canvasStream.getVideoTracks(),
@@ -1134,16 +907,15 @@ function Slideshow() {
             } else {
                 stream = canvasStream;
             }
-            
-            // Find best MIME type for mobile compatibility
+
+            // Find best MIME type
             const mimeTypes = [
                 'video/mp4;codecs=h264,aac',
-                'video/mp4;codecs=avc1,mp4a',
                 'video/mp4',
                 'video/webm;codecs=vp8,opus',
                 'video/webm'
             ];
-            
+
             let mimeType = '';
             for (const type of mimeTypes) {
                 if (MediaRecorder.isTypeSupported(type)) {
@@ -1151,28 +923,24 @@ function Slideshow() {
                     break;
                 }
             }
-            
-            console.log('Using MIME type:', mimeType);
-            
+
             const recorderOptions = {
                 mimeType: mimeType,
-                videoBitsPerSecond: isMobile ? 900000 : 2500000,
-                audioBitsPerSecond: 128000
+                videoBitsPerSecond: 4000000,
+                audioBitsPerSecond: 192000
             };
-            
+
             recorder = new MediaRecorder(stream, recorderOptions);
-            
+
             recorder.ondataavailable = (event) => {
                 if (event.data && event.data.size > 0) {
                     recordingChunks.push(event.data);
                 }
             };
-            
-            // Start recording
+
             recorder.start(250);
             await new Promise(resolve => setTimeout(resolve, 100));
-            
-            // Start audio
+
             if (audioContext.state !== 'running') {
                 await audioContext.resume();
             }
@@ -1181,62 +949,53 @@ function Slideshow() {
             } catch (err) {
                 console.log('Audio playback failed:', err);
             }
-            
-            // Calculate total frames for progress
-            const introFrames = isMobile ? 40 : 120;
-            const slideFrames = isMobile ? 45 : 150;
-            const outroFrames = isMobile ? 60 : 180;
-            const totalFrames = introFrames + (slides.length * slideFrames) + outroFrames;
-            
+
+            const introFrames = 120;
+            const slideFrames = 180;
+            const outroFrames = 120;
+
+            let globalFrame = 0;
+
             // Render intro
-            await renderIntro(ctx, width, height, FPS, introFrames);
-            frameIndex += introFrames;
+            await renderIntro(ctx, width, height, introFrames, globalFrame);
+            globalFrame += introFrames;
             setRecordingProgress(10);
-            
-            // Render each slide
-            let globalFrame = introFrames;
+
+            // Render slides
             for (let i = 0; i < slides.length; i++) {
-                await renderSlideForVideo(ctx, width, height, slides[i], i + 1, slides.length, globalFrame, FPS, slideFrames);
+                await renderSlide(ctx, width, height, slides[i], i + 1, slides.length, globalFrame, slideFrames);
                 globalFrame += slideFrames;
-                frameIndex += slideFrames;
                 setRecordingProgress(10 + Math.round(((i + 1) / slides.length) * 80));
             }
-            
+
             // Render outro
-            await renderOutro(ctx, width, height, FPS, outroFrames);
+            await renderOutro(ctx, width, height, outroFrames, globalFrame);
             setRecordingProgress(95);
-            
-            // Wait a moment then stop
+
             await new Promise(resolve => setTimeout(resolve, 500));
-            
+
             if (recorder && recorder.state === 'recording') {
                 recorder.stop();
             }
-            
+
             if (audioElement) {
                 audioElement.pause();
             }
-            
-            // Wait for final data
+
             await new Promise(resolve => setTimeout(resolve, 1000));
-            
+
             if (recordingChunks.length === 0) {
                 throw new Error('No video data was recorded');
             }
-            
-            // Create and download video
+
+            // Create video blob
             const blob = new Blob(recordingChunks, { type: mimeType || 'video/mp4' });
             const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
             const filename = code
                 ? `${eventText.action.toLowerCase()}-slideshow-${code}-${Date.now()}.${extension}`
                 : `${eventText.action.toLowerCase()}-slideshow-${Date.now()}.${extension}`;
 
-            const shared = await shareVideo(blob, filename);
-            if (shared) {
-                setRecordingProgress(100);
-                return;
-            }
-
+            // Save to device
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -1245,14 +1004,14 @@ function Slideshow() {
             a.click();
             document.body.removeChild(a);
             setTimeout(() => URL.revokeObjectURL(url), 1000);
-            
+
             setRecordingProgress(100);
-            
+            alert('Video saved to your device!');
+
         } catch (err) {
             console.error('Video export error:', err);
             alert('An error occurred: ' + err.message);
         } finally {
-            // Cleanup
             if (stream) {
                 stream.getTracks().forEach(track => track.stop());
             }
@@ -1267,49 +1026,15 @@ function Slideshow() {
         }
     }
 
-     async function shareVideo(blob, filename) {
-         try {
-             const file = new File(
-                 [blob],
-                 filename,
-                 {
-                     type: blob.type
-                 }
-             );
-
-             if (
-                 navigator.canShare &&
-                 navigator.canShare({
-                     files: [file]
-                 })
-             ) {
-                 await navigator.share({
-                     files: [file],
-                     title: 'Celebration Video',
-                     text: 'Check out this slideshow!'
-                 });
-
-                 return true;
-             }
-
-             return false;
-
-         } catch (err) {
-             console.log('Share failed:', err);
-             return false;
-         }
-     }
-
-     function shareToWhatsApp() {
-         const currentSlide = slides[currentIndex];
-         if (currentSlide && code) {
-             const baseUrl = window.location.origin;
-             const shareLink = `${baseUrl}/slideshow/${code}`;
-             const messageText = `✨ Join the ${eventText.shareMessage}! ✨\n\n🎥 Watch the slideshow: ${shareLink}\n\n💝 Enjoy the memories!`;
-             const encodedMessage = encodeURIComponent(messageText);
-             window.location.href = `https://wa.me/?text=${encodedMessage}`;
-         }
-     }
+    function shareToWhatsApp() {
+        if (code) {
+            const baseUrl = window.location.origin;
+            const shareLink = `${baseUrl}/slideshow/${code}`;
+            const messageText = `✨ Join the ${eventText.shareMessage}! ✨\n\n🎥 Watch the slideshow: ${shareLink}\n\n💝 Enjoy the memories!`;
+            const encodedMessage = encodeURIComponent(messageText);
+            window.open(`https://wa.me/?text=${encodedMessage}`, '_blank');
+        }
+    }
 
     function getVisibleSlides() {
         if (slides.length === 0) return []
@@ -1327,20 +1052,15 @@ function Slideshow() {
 
     return (
         <div className="relative w-full h-screen overflow-hidden" style={{ background: '#0a0a0a' }}>
-            {/* Background gradient */}
             <div className="fixed inset-0" style={{ background: 'radial-gradient(ellipse at top, #1a1a2e 0%, #0a0a0a 50%, #000 100%)', zIndex: -1 }} />
-
-            {/* Floating Elements Container */}
             <div className="hearts" id="heartsContainer"></div>
 
-            {/* Back Button */}
             <button onClick={goBack} className="fab back fixed top-5 left-5 z-50" title="Go Back">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-6 h-6">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
             </button>
 
-            {/* FABs Container */}
             <div className="fab-container fixed top-5 right-5 z-50 flex gap-2">
                 <button className="fab w-10 h-10 rounded-full bg-gray-800/80 backdrop-blur text-white flex items-center justify-center" onClick={toggleMusic} title="Toggle Music">
                     {musicPlaying ? (
@@ -1384,7 +1104,6 @@ function Slideshow() {
                 </button>
             </div>
 
-            {/* Recording Overlay */}
             {isRecording && (
                 <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center">
                     <div className="text-center">
@@ -1413,13 +1132,14 @@ function Slideshow() {
                 </div>
             )}
 
-            {/* Title Overlay */}
-            <div className={`title-overlay ${showTitle ? 'show' : ''}`}>
-                <h1 className="romantic-font">{eventText.title}, {celebrantName}! {eventText.emoji}</h1>
-                <p>With love from your friends & family 💕</p>
-            </div>
+            {/* Title Overlay - Only show when we have the actual celebrant name */}
+            {orderLoaded && celebrantName && (
+                <div className={`title-overlay ${showTitle ? 'show' : ''}`}>
+                    <h1 className="romantic-font">{eventText.title}, {celebrantName}! {eventText.emoji}</h1>
+                    <p>With love from your friends & family 💕</p>
+                </div>
+            )}
 
-            {/* MAIN CONTENT */}
             {isLoading ? (
                 <div className="absolute inset-0 flex items-center justify-center">
                     <div className="text-center">
@@ -1473,11 +1193,11 @@ function Slideshow() {
                             </div>
                         </div>
                     ) : (
-                        <div className="slideshow-container bg-rose-500">
+                        <div className="slideshow-container">
                             {slides.map((slide, index) => (
                                 <div key={index} className={`slide ${index === currentIndex ? 'active' : ''}`}>
                                     <img src={slide.photo} className="slide-image" alt={`Slide ${index + 1}`} onError={(e) => e.target.src = 'data:image/svg+xml;...'} />
-                                    <div className="slide-message bg-rose-500">
+                                    <div className="slide-message">
                                         <h3>{slide.name}</h3>
                                         <p>{slide.message}</p>
                                     </div>
@@ -1524,7 +1244,6 @@ function Slideshow() {
                 </div>
             )}
 
-            {/* Download Modal */}
             {showDownload && (
                 <div className="download-modal active fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={closeDownloadModal}>
                     <div className="download-content bg-gray-900 rounded-2xl p-6 max-w-sm w-full mx-4 text-center" onClick={e => e.stopPropagation()}>
@@ -1564,4 +1283,5 @@ function KeyboardControls({ onNext, onPrev, onTogglePlay, onToggleMusic, onClose
     }, [onNext, onPrev, onTogglePlay, onToggleMusic, onCloseModal])
     return null
 }
+
 export default Slideshow

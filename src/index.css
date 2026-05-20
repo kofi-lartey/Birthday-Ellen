@@ -232,37 +232,6 @@ body {
     animation: fadeIn 0.5s ease forwards;
 }
 
-/* Enhanced slide transition */
-.slide {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    opacity: 0;
-    transition: opacity 1s cubic-bezier(0.4, 0, 0.2, 1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.slide.active {
-    opacity: 1;
-}
-
-.slide-image {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transform: scale(1.03);
-    transition: transform 10s ease-out;
-}
-
-.slide.active .slide-image {
-    transform: scale(1);
-}
-
 /* ===== LOADING STATE ===== */
 .loading-overlay {
     position: fixed;
@@ -337,65 +306,6 @@ body {
     }
 }
 
-/* ===== TITLE OVERLAY ===== */
-.title-overlay {
-    position: fixed;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 2rem;
-    z-index: 150;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.8s;
-    pointer-events: none;
-}
-
-.title-overlay.visible {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-}
-
-.title-overlay h1 {
-    font-family: 'Playfair Display', Georgia, serif;
-    font-weight: 800;
-    line-height: 1.1;
-    letter-spacing: -0.02em;
-    margin: 0 0 0.5rem 0;
-    background: linear-gradient(135deg, #ffffff 0%, var(--primary) 50%, #ffffff 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    animation: titleFloat 3.5s ease-in-out infinite;
-    text-shadow: 0 0 60px rgba(236, 72, 153, 0.5);
-}
-
-@keyframes titleFloat {
-
-    0%,
-    100% {
-        transform: translateY(0) scale(1);
-    }
-
-    50% {
-        transform: translateY(-1.5%) scale(1.01);
-    }
-}
-
-.title-overlay p {
-    font-family: 'Poppins', sans-serif;
-    font-weight: 400;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    font-size: clamp(0.875rem, 2vw, 1.125rem);
-    color: rgba(255, 255, 255, 0.85);
-    margin: 0;
-    max-width: 600px;
-}
 
 /* Glass Message Card - Premium Typography */
 .slide-message {
@@ -506,38 +416,10 @@ body {
     box-shadow: 0 6px 24px rgba(236, 72, 153, 0.5);
 }
 
-/* FAB */
-.fab {
-    width: 48px;
-    height: 48px;
-    border-radius: 16px;
-    border: 1px solid var(--glass-border);
-    background: var(--glass-bg);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    color: white;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: var(--glass-shadow);
-}
-
-.fab:hover {
+/* Controls wrapper */
+.controls:hover {
     background: rgba(255, 255, 255, 0.2);
     transform: scale(1.05);
-}
-
-.fab-container {
-    display: flex;
-    gap: 10px;
-}
-
-.fab.back {
-    position: fixed;
-    top: 20px;
-    left: 20px;
 }
 
 /* Controls wrapper */
@@ -551,43 +433,6 @@ body {
     flex-direction: column;
     align-items: center;
     gap: 16px;
-}
-
-/* Control buttons */
-.control-btn {
-    background: transparent;
-    border: none;
-    color: white;
-    padding: 10px 16px;
-    border-radius: 30px;
-    cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    font-size: 14px;
-    font-weight: 500;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    white-space: nowrap;
-}
-
-.control-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
-    transform: translateY(-2px);
-}
-
-.control-btn.primary {
-    background: linear-gradient(135deg, var(--primary), var(--secondary));
-    padding: 10px 20px;
-}
-
-.control-btn.primary:hover {
-    background: linear-gradient(135deg, var(--secondary), var(--primary));
-    box-shadow: 0 4px 20px rgba(236, 72, 153, 0.5);
-}
-
-.control-btn svg {
-    width: 18px;
-    height: 18px;
 }
 
 /* Divider */
@@ -713,11 +558,18 @@ body {
     gap: clamp(8px, 2vw, 12px);
 }
 
+.fab.back {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+}
+
 .fab svg {
     width: clamp(18px, 4vw, 22px);
     height: clamp(18px, 4vw, 22px);
 }
 
+/* Title overlay */
 .title-overlay {
     position: fixed;
     top: 0;
@@ -1041,4 +893,33 @@ body {
 /* Bulk download overlay */
 .fixed.inset-0.bg-black\/80 .text-6xl {
     filter: drop-shadow(0 0 10px rgba(236, 72, 153, 0.5));
+}
+
+.slideshow-container {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+    background: #000;
+}
+
+.slide {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transition: opacity 1s ease;
+    z-index: 1;
+}
+
+.slide.active {
+    opacity: 1;
+    z-index: 5;
+}
+
+.slide-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }
