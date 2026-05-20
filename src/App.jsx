@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom'
 import { useState, useRef, useEffect } from 'react'
 import { supabase, STORAGE_KEYS } from './supabase'
+import InstallButton from './components/InstallButton'
 import Home from './pages/Home'
 import Locked from './pages/Locked'
 import GiftPage from './pages/Gift'
@@ -260,6 +261,7 @@ function App() {
                 <Route path="/edit-hangout/:id" element={<EditHangout />} />
                 <Route path="/edit-other-event/:id" element={<EditOtherEvent />} />
             </Routes>
+            <InstallButton />
         </Router>
     )
 }
