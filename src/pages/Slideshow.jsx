@@ -21,11 +21,12 @@ function Slideshow() {
     const [audioInitialized, setAudioInitialized] = useState(false)
     const [isBulkDownloading, setIsBulkDownloading] = useState(false)
     const [bulkDownloadProgress, setBulkDownloadProgress] = useState(0)
-    const [orderConfig, setOrderConfig] = useState(null)
-    const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024)
-    const [eventType, setEventType] = useState('birthday')
+     const [orderConfig, setOrderConfig] = useState(null)
+     const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024)
+     const [eventType, setEventType] = useState('birthday')
+     const isMobile = window.innerWidth < 768
 
-    const intervalRef = useRef(null)
+     const intervalRef = useRef(null)
     const progressRef = useRef(null)
     const musicRef = useRef(null)
     const [popAnimationKey, setPopAnimationKey] = useState(0)
@@ -503,59 +504,74 @@ function Slideshow() {
         return audioCtx
     }
 
-    async function addWatermarkToFrame(ctx, width, height, frameIndex) {
-        const appIcon = await loadAppIcon()
-        if (!appIcon) return
-        
-        const watermarkSize = width * 0.07
-        const margin = 15
-        
-        const cycleDuration = 300
-        const cycleProgress = (frameIndex % cycleDuration) / cycleDuration
-        
-        let watermarkX, watermarkY
-        
-        if (cycleProgress < 0.25) {
-            const t = cycleProgress / 0.25
-            watermarkX = (width - watermarkSize - margin) * (1 - t)
-            watermarkY = margin
-        } else if (cycleProgress < 0.5) {
-            const t = (cycleProgress - 0.25) / 0.25
-            watermarkX = margin
-            watermarkY = margin + (height - watermarkSize - margin * 2) * t
-        } else if (cycleProgress < 0.75) {
-            const t = (cycleProgress - 0.5) / 0.25
-            watermarkX = margin + (width - watermarkSize - margin * 2) * t
-            watermarkY = height - watermarkSize - margin
-        } else {
-            const t = (cycleProgress - 0.75) / 0.25
-            watermarkX = width - watermarkSize - margin
-            watermarkY = height - watermarkSize - margin - (height - watermarkSize - margin * 2) * t
-        }
-        
-        const pulseScale = 1 + Math.sin(frameIndex * 0.1) * 0.05
-        
-        ctx.save()
-        ctx.translate(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2)
-        ctx.scale(pulseScale, pulseScale)
-        ctx.translate(-(watermarkX + watermarkSize / 2), -(watermarkY + watermarkSize / 2))
-        
-        ctx.shadowBlur = 8
-        ctx.shadowColor = 'rgba(255, 105, 180, 0.5)'
-        
-        ctx.drawImage(appIcon, watermarkX, watermarkY, watermarkSize, watermarkSize)
-        
-        ctx.beginPath()
-        ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, watermarkSize / 2 + 3, 0, Math.PI * 2)
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'
-        ctx.lineWidth = 1.5
-        ctx.stroke()
-        ctx.restore()
-    }
+     async function drawTikTokWatermark(
+         ctx,
+         appIcon,
+         width,
+         height,
+         frame
+     ) {
+         if (!appIcon) return;
 
-    async function renderIntro(ctx, width, height) {
-        const fps = 30
-        const totalFrames = 120
+         const size = width * 0.075;
+         const margin = 20;
+
+         // move watermark every few frames
+         const positionIndex = Math.floor(frame / 180) % 4;
+
+         let x = margin;
+         let y = margin;
+
+         switch (positionIndex) {
+             case 0:
+                 x = margin;
+                 y = margin;
+                 break;
+
+             case 1:
+                 x = width - size - margin;
+                 y = margin;
+                 break;
+
+             case 2:
+                 x = width - size - margin;
+                 y = height - size - margin;
+                 break;
+
+             case 3:
+                 x = margin;
+                 y = height - size - margin;
+                 break;
+         }
+
+         // subtle opacity animation
+         const opacity = 0.75 + Math.sin(frame * 0.03) * 0.1;
+
+         ctx.save();
+
+         ctx.globalAlpha = opacity;
+
+         // subtle background circle
+         ctx.beginPath();
+
+         ctx.arc(
+             x + size / 2,
+             y + size / 2,
+             size / 2 + 4,
+             0,
+             Math.PI * 2
+         );
+
+         ctx.fillStyle = 'rgba(0,0,0,0.35)';
+         ctx.fill();
+
+         // draw logo
+         ctx.drawImage(appIcon, x, y, size, size);
+
+         ctx.restore();
+     }
+
+     async function renderIntro(ctx, width, height, fps, totalFrames) {
         const appIcon = await loadAppIcon()
 
         const particles = []
@@ -711,62 +727,10 @@ function Slideshow() {
             ctx.fillText(`${celebrantName} ${eventText.emoji}`, 0, 100 + bounce)
             ctx.restore()
 
-            // Add watermark to intro
-            if (appIcon) {
-                const watermarkSize = width * 0.07
-                const margin = 20
+              // Add watermark to intro
+             await drawTikTokWatermark(ctx, appIcon, width, height, i)
 
-                const cycleDuration = 300
-                const cycleProgress = (i % cycleDuration) / cycleDuration
-
-                let watermarkX, watermarkY
-
-                if (cycleProgress < 0.25) {
-                    const t = cycleProgress / 0.25
-                    watermarkX = (width - watermarkSize - margin) * (1 - t)
-                    watermarkY = margin
-                } else if (cycleProgress < 0.5) {
-                    const t = (cycleProgress - 0.25) / 0.25
-                    watermarkX = margin
-                    watermarkY = margin + (height - watermarkSize - margin * 2) * t
-                } else if (cycleProgress < 0.75) {
-                    const t = (cycleProgress - 0.5) / 0.25
-                    watermarkX = margin + (width - watermarkSize - margin * 2) * t
-                    watermarkY = height - watermarkSize - margin
-                } else {
-                    const t = (cycleProgress - 0.75) / 0.25
-                    watermarkX = width - watermarkSize - margin
-                    watermarkY = height - watermarkSize - margin - (height - watermarkSize - margin * 2) * t
-                }
-
-                const pulseScale = 1 + Math.sin(i * 0.15) * 0.08
-                const rotation = i * 0.03
-
-                ctx.save()
-                ctx.translate(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2)
-                ctx.rotate(rotation)
-                ctx.scale(pulseScale, pulseScale)
-                ctx.translate(-(watermarkX + watermarkSize / 2), -(watermarkY + watermarkSize / 2))
-
-                ctx.shadowColor = 'rgba(255, 105, 180, 0.6)'
-                ctx.shadowBlur = 12
-
-                ctx.beginPath()
-                ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, (watermarkSize / 2 + 10) * pulseScale, 0, Math.PI * 2)
-                ctx.strokeStyle = `rgba(255, 107, 157, 0.7)`
-                ctx.lineWidth = 2.5
-                ctx.stroke()
-
-                ctx.beginPath()
-                ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, watermarkSize / 2 + 6, 0, Math.PI * 2)
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
-                ctx.fill()
-
-                ctx.drawImage(appIcon, watermarkX, watermarkY, watermarkSize, watermarkSize)
-                ctx.restore()
-            }
-
-            if (progress > 0.3 && progress < 0.7 && i % 10 === 0) {
+             if (progress > 0.3 && progress < 0.7 && i % 10 === 0) {
                 for (let b = 0; b < 5; b++) {
                     const angle = Math.random() * Math.PI * 2
                     const radius = 100 + Math.random() * 150
@@ -816,20 +780,20 @@ function Slideshow() {
             ctx.stroke()
             ctx.restore()
 
-            await new Promise(r => setTimeout(r, 1000 / fps))
-        }
-    }
+             if (!isMobile) {
+                 await new Promise(r => setTimeout(r, 1000 / fps))
+             }
+         }
+     }
 
-    async function renderSlideForVideo(ctx, width, height, slide, slideNumber, totalSlides, globalFrame = 0) {
-        const img = new Image()
-        img.crossOrigin = "anonymous"
-        await new Promise(resolve => { img.onload = resolve; img.src = slide.photo })
+     async function renderSlideForVideo(ctx, width, height, slide, slideNumber, totalSlides, globalFrame = 0, fps, frames) {
+         const img = new Image()
+         img.crossOrigin = "anonymous"
+         await new Promise(resolve => { img.onload = resolve; img.src = slide.photo })
 
-        const appIcon = await loadAppIcon()
-        const fps = 30
-        const frames = 150
+         const appIcon = await loadAppIcon()
 
-        for (let frame = 0; frame < frames; frame++) {
+         for (let frame = 0; frame < frames; frame++) {
             ctx.clearRect(0, 0, width, height)
 
             const imgRatio = img.width / img.height
@@ -927,98 +891,15 @@ function Slideshow() {
             ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'
             ctx.fillText('Designed by KofiLartey', 20, height - 20)
 
-            // ========== ANIMATED WATERMARK THAT MOVES AROUND THE SCREEN ==========
-            if (appIcon) {
-                const watermarkSize = width * 0.08
-                const margin = 20
+             // ========== TIKTOK WATERMARK ==========
+             await drawTikTokWatermark(ctx, appIcon, width, height, globalFrame + frame)
 
-                const cycleDuration = 300
-                const cycleProgress = ((globalFrame + frame) % cycleDuration) / cycleDuration
-
-                let watermarkX, watermarkY
-
-                if (cycleProgress < 0.25) {
-                    const t = cycleProgress / 0.25
-                    watermarkX = (width - watermarkSize - margin) * (1 - t)
-                    watermarkY = margin
-                } else if (cycleProgress < 0.5) {
-                    const t = (cycleProgress - 0.25) / 0.25
-                    watermarkX = margin
-                    watermarkY = margin + (height - watermarkSize - margin * 2) * t
-                } else if (cycleProgress < 0.75) {
-                    const t = (cycleProgress - 0.5) / 0.25
-                    watermarkX = margin + (width - watermarkSize - margin * 2) * t
-                    watermarkY = height - watermarkSize - margin
-                } else {
-                    const t = (cycleProgress - 0.75) / 0.25
-                    watermarkX = width - watermarkSize - margin
-                    watermarkY = height - watermarkSize - margin - (height - watermarkSize - margin * 2) * t
-                }
-
-                const pulseScale = 1 + Math.sin((globalFrame + frame) * 0.15) * 0.08
-                const rotation = (globalFrame + frame) * 0.03
-
-                ctx.save()
-                ctx.translate(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2)
-                ctx.rotate(rotation)
-                ctx.scale(pulseScale, pulseScale)
-                ctx.translate(-(watermarkX + watermarkSize / 2), -(watermarkY + watermarkSize / 2))
-
-                ctx.shadowColor = 'rgba(255, 105, 180, 0.6)'
-                ctx.shadowBlur = 12
-
-                const ringPulse = 0.8 + Math.sin((globalFrame + frame) * 0.2) * 0.2
-                ctx.beginPath()
-                ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, (watermarkSize / 2 + 10) * ringPulse, 0, Math.PI * 2)
-                ctx.strokeStyle = `rgba(255, 107, 157, ${0.7 + Math.sin((globalFrame + frame) * 0.15) * 0.3})`
-                ctx.lineWidth = 2.5
-                ctx.stroke()
-
-                const ringRotation = (globalFrame + frame) * 0.02
-                ctx.beginPath()
-                ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, (watermarkSize / 2 + 15) * pulseScale, ringRotation, ringRotation + Math.PI * 1.8)
-                ctx.strokeStyle = `rgba(255, 200, 100, ${0.5 + Math.sin((globalFrame + frame) * 0.1) * 0.2})`
-                ctx.lineWidth = 2
-                ctx.stroke()
-
-                ctx.beginPath()
-                ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, watermarkSize / 2 + 6, 0, Math.PI * 2)
-                ctx.fillStyle = `rgba(0, 0, 0, ${0.5 + Math.sin((globalFrame + frame) * 0.12) * 0.1})`
-                ctx.fill()
-
-                ctx.drawImage(appIcon, watermarkX, watermarkY, watermarkSize, watermarkSize)
-
-                ctx.beginPath()
-                ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, watermarkSize / 2 + 3, 0, Math.PI * 2)
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)'
-                ctx.lineWidth = 1.5
-                ctx.stroke()
-
-                if (Math.sin((globalFrame + frame) * 0.3) > 0.5) {
-                    for (let s = 0; s < 3; s++) {
-                        const angle = (globalFrame + frame) * 0.2 + s * Math.PI * 2 / 3
-                        const radius = watermarkSize / 2 + 12 + Math.sin((globalFrame + frame) * 0.4) * 3
-                        const sparkleX = watermarkX + watermarkSize / 2 + Math.cos(angle) * radius
-                        const sparkleY = watermarkY + watermarkSize / 2 + Math.sin(angle) * radius
-
-                        ctx.beginPath()
-                        ctx.arc(sparkleX, sparkleY, 2 + Math.sin((globalFrame + frame) * 0.5 + s) * 1, 0, Math.PI * 2)
-                        ctx.fillStyle = `rgba(255, 200, 100, ${0.6 + Math.sin((globalFrame + frame) * 0.3) * 0.4})`
-                        ctx.fill()
-                    }
-                }
-
-                ctx.restore()
-            }
-
-            ctx.shadowBlur = 0
-            await new Promise(r => setTimeout(r, 1000 / fps))
+             ctx.shadowBlur = 0
+             await new Promise(r => setTimeout(r, 1000 / fps))
         }
     }
 
-    async function renderOutro(ctx, width, height) {
-        const fps = 30
-        const totalFrames = 180
+     async function renderOutro(ctx, width, height, fps, totalFrames) {
         const appIcon = await loadAppIcon()
 
         const stars = []
@@ -1175,89 +1056,48 @@ function Slideshow() {
             }
 
             // Add watermark to outro
-            if (appIcon) {
-                const watermarkSize = width * 0.07
-                const margin = 20
-
-                const cycleDuration = 300
-                const cycleProgress = (i % cycleDuration) / cycleDuration
-
-                let watermarkX, watermarkY
-
-                if (cycleProgress < 0.25) {
-                    const t = cycleProgress / 0.25
-                    watermarkX = (width - watermarkSize - margin) * (1 - t)
-                    watermarkY = margin
-                } else if (cycleProgress < 0.5) {
-                    const t = (cycleProgress - 0.25) / 0.25
-                    watermarkX = margin
-                    watermarkY = margin + (height - watermarkSize - margin * 2) * t
-                } else if (cycleProgress < 0.75) {
-                    const t = (cycleProgress - 0.5) / 0.25
-                    watermarkX = margin + (width - watermarkSize - margin * 2) * t
-                    watermarkY = height - watermarkSize - margin
-                } else {
-                    const t = (cycleProgress - 0.75) / 0.25
-                    watermarkX = width - watermarkSize - margin
-                    watermarkY = height - watermarkSize - margin - (height - watermarkSize - margin * 2) * t
-                }
-
-                const pulseScale = 1 + Math.sin(i * 0.15) * 0.08
-                const rotation = i * 0.03
-
-                ctx.save()
-                ctx.translate(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2)
-                ctx.rotate(rotation)
-                ctx.scale(pulseScale, pulseScale)
-                ctx.translate(-(watermarkX + watermarkSize / 2), -(watermarkY + watermarkSize / 2))
-
-                ctx.shadowColor = 'rgba(255, 105, 180, 0.6)'
-                ctx.shadowBlur = 12
-
-                ctx.beginPath()
-                ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, (watermarkSize / 2 + 10) * pulseScale, 0, Math.PI * 2)
-                ctx.strokeStyle = `rgba(255, 107, 157, 0.7)`
-                ctx.lineWidth = 2.5
-                ctx.stroke()
-
-                ctx.beginPath()
-                ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, watermarkSize / 2 + 6, 0, Math.PI * 2)
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
-                ctx.fill()
-
-                ctx.drawImage(appIcon, watermarkX, watermarkY, watermarkSize, watermarkSize)
-                ctx.restore()
-            }
+            await drawTikTokWatermark(ctx, appIcon, width, height, i)
 
             ctx.globalAlpha = 1
-            await new Promise(r => setTimeout(r, 1000 / fps))
-        }
-    }
+            if (!isMobile) {
+                await new Promise(r => setTimeout(r, 1000 / fps))
+            }
+         }
+     }
 
     // ========== FIXED VIDEO EXPORT FUNCTION ==========
 
-    async function exportVideo() {
-        if (!slides.length) {
-            alert('No slides to export');
-            return;
-        }
+     async function exportVideo() {
+         if (!slides.length) {
+             alert('No slides to export');
+             return;
+         }
 
-        const audioUrl = orderConfig?.audio_url;
-        if (!audioUrl) {
-            alert('No background music configured for this page.');
-            return;
-        }
+         if (isMobile && slides.length > 20) {
+             alert('For best performance on mobile, limit exports to 20 slides.');
+             return;
+         }
 
-        setIsRecording(true);
-        setRecordingProgress(0);
+         const audioUrl = orderConfig?.audio_url;
+         if (!audioUrl) {
+             alert('No background music configured for this page.');
+             return;
+         }
 
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d', { alpha: false });
-        const FPS = 30;
-        const width = 720;
-        const height = 1280;
-        canvas.width = width;
-        canvas.height = height;
+         setIsRecording(true);
+         setRecordingProgress(0);
+
+         const canvas = document.createElement('canvas');
+     const ctx = canvas.getContext('2d', {
+         alpha: false,
+         desynchronized: true,
+         willReadFrequently: false
+     });
+     const FPS = isMobile ? 15 : 30;
+     const width = isMobile ? 360 : 720;
+     const height = isMobile ? 640 : 1280;
+      canvas.width = width;
+      canvas.height = height;
 
         let recorder = null;
         let audioElement = null;
@@ -1316,7 +1156,7 @@ function Slideshow() {
             
             const recorderOptions = {
                 mimeType: mimeType,
-                videoBitsPerSecond: 2500000,
+                videoBitsPerSecond: isMobile ? 900000 : 2500000,
                 audioBitsPerSecond: 128000
             };
             
@@ -1329,37 +1169,41 @@ function Slideshow() {
             };
             
             // Start recording
-            recorder.start(1000);
+            recorder.start(250);
             await new Promise(resolve => setTimeout(resolve, 100));
             
             // Start audio
             if (audioContext.state !== 'running') {
                 await audioContext.resume();
             }
-            await audioElement.play();
+            try {
+                await audioElement.play();
+            } catch (err) {
+                console.log('Audio playback failed:', err);
+            }
             
             // Calculate total frames for progress
-            const introFrames = 120;
-            const slideFrames = 150;
-            const outroFrames = 180;
+            const introFrames = isMobile ? 40 : 120;
+            const slideFrames = isMobile ? 45 : 150;
+            const outroFrames = isMobile ? 60 : 180;
             const totalFrames = introFrames + (slides.length * slideFrames) + outroFrames;
             
             // Render intro
-            await renderIntro(ctx, width, height);
+            await renderIntro(ctx, width, height, FPS, introFrames);
             frameIndex += introFrames;
             setRecordingProgress(10);
             
             // Render each slide
             let globalFrame = introFrames;
             for (let i = 0; i < slides.length; i++) {
-                await renderSlideForVideo(ctx, width, height, slides[i], i + 1, slides.length, globalFrame);
+                await renderSlideForVideo(ctx, width, height, slides[i], i + 1, slides.length, globalFrame, FPS, slideFrames);
                 globalFrame += slideFrames;
                 frameIndex += slideFrames;
                 setRecordingProgress(10 + Math.round(((i + 1) / slides.length) * 80));
             }
             
             // Render outro
-            await renderOutro(ctx, width, height);
+            await renderOutro(ctx, width, height, FPS, outroFrames);
             setRecordingProgress(95);
             
             // Wait a moment then stop
@@ -1386,7 +1230,13 @@ function Slideshow() {
             const filename = code
                 ? `${eventText.action.toLowerCase()}-slideshow-${code}-${Date.now()}.${extension}`
                 : `${eventText.action.toLowerCase()}-slideshow-${Date.now()}.${extension}`;
-            
+
+            const shared = await shareVideo(blob, filename);
+            if (shared) {
+                setRecordingProgress(100);
+                return;
+            }
+
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -1417,16 +1267,49 @@ function Slideshow() {
         }
     }
 
-    function shareToWhatsApp() {
-        const currentSlide = slides[currentIndex];
-        if (currentSlide && code) {
-            const baseUrl = window.location.origin;
-            const shareLink = `${baseUrl}/slideshow/${code}`;
-            const messageText = `✨ Join the ${eventText.shareMessage}! ✨\n\n🎥 Watch the slideshow: ${shareLink}\n\n💝 Enjoy the memories!`;
-            const encodedMessage = encodeURIComponent(messageText);
-            window.open(`https://wa.me/?text=${encodedMessage}`, '_blank');
-        }
-    }
+     async function shareVideo(blob, filename) {
+         try {
+             const file = new File(
+                 [blob],
+                 filename,
+                 {
+                     type: blob.type
+                 }
+             );
+
+             if (
+                 navigator.canShare &&
+                 navigator.canShare({
+                     files: [file]
+                 })
+             ) {
+                 await navigator.share({
+                     files: [file],
+                     title: 'Celebration Video',
+                     text: 'Check out this slideshow!'
+                 });
+
+                 return true;
+             }
+
+             return false;
+
+         } catch (err) {
+             console.log('Share failed:', err);
+             return false;
+         }
+     }
+
+     function shareToWhatsApp() {
+         const currentSlide = slides[currentIndex];
+         if (currentSlide && code) {
+             const baseUrl = window.location.origin;
+             const shareLink = `${baseUrl}/slideshow/${code}`;
+             const messageText = `✨ Join the ${eventText.shareMessage}! ✨\n\n🎥 Watch the slideshow: ${shareLink}\n\n💝 Enjoy the memories!`;
+             const encodedMessage = encodeURIComponent(messageText);
+             window.location.href = `https://wa.me/?text=${encodedMessage}`;
+         }
+     }
 
     function getVisibleSlides() {
         if (slides.length === 0) return []
