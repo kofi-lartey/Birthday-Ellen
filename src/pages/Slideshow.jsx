@@ -93,6 +93,17 @@ function Slideshow() {
         })
     }
 
+    // Helper function to load images
+    function loadImage(src) {
+        return new Promise((resolve, reject) => {
+            const img = new Image()
+            img.crossOrigin = 'anonymous'
+            img.onload = () => resolve(img)
+            img.onerror = reject
+            img.src = src
+        })
+    }
+
     useEffect(() => {
         setPopAnimationKey(prev => prev + 1)
     }, [currentIndex])
@@ -473,7 +484,74 @@ function Slideshow() {
         })
     }
 
-    // ========== VIDEO RENDERING FUNCTIONS WITH WATERMARK ==========
+    // ========== FIXED VIDEO RENDERING FUNCTIONS WITH WATERMARK ==========
+
+    async function ensureAudioContext() {
+        const AudioContext = window.AudioContext || window.webkitAudioContext
+        const audioCtx = new AudioContext()
+        
+        if (audioCtx.state === 'suspended') {
+            const silentBuffer = audioCtx.createBuffer(1, 1, 22050)
+            const source = audioCtx.createBufferSource()
+            source.buffer = silentBuffer
+            source.connect(audioCtx.destination)
+            source.start()
+            source.stop(0.1)
+            await audioCtx.resume()
+        }
+        
+        return audioCtx
+    }
+
+    async function addWatermarkToFrame(ctx, width, height, frameIndex) {
+        const appIcon = await loadAppIcon()
+        if (!appIcon) return
+        
+        const watermarkSize = width * 0.07
+        const margin = 15
+        
+        const cycleDuration = 300
+        const cycleProgress = (frameIndex % cycleDuration) / cycleDuration
+        
+        let watermarkX, watermarkY
+        
+        if (cycleProgress < 0.25) {
+            const t = cycleProgress / 0.25
+            watermarkX = (width - watermarkSize - margin) * (1 - t)
+            watermarkY = margin
+        } else if (cycleProgress < 0.5) {
+            const t = (cycleProgress - 0.25) / 0.25
+            watermarkX = margin
+            watermarkY = margin + (height - watermarkSize - margin * 2) * t
+        } else if (cycleProgress < 0.75) {
+            const t = (cycleProgress - 0.5) / 0.25
+            watermarkX = margin + (width - watermarkSize - margin * 2) * t
+            watermarkY = height - watermarkSize - margin
+        } else {
+            const t = (cycleProgress - 0.75) / 0.25
+            watermarkX = width - watermarkSize - margin
+            watermarkY = height - watermarkSize - margin - (height - watermarkSize - margin * 2) * t
+        }
+        
+        const pulseScale = 1 + Math.sin(frameIndex * 0.1) * 0.05
+        
+        ctx.save()
+        ctx.translate(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2)
+        ctx.scale(pulseScale, pulseScale)
+        ctx.translate(-(watermarkX + watermarkSize / 2), -(watermarkY + watermarkSize / 2))
+        
+        ctx.shadowBlur = 8
+        ctx.shadowColor = 'rgba(255, 105, 180, 0.5)'
+        
+        ctx.drawImage(appIcon, watermarkX, watermarkY, watermarkSize, watermarkSize)
+        
+        ctx.beginPath()
+        ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, watermarkSize / 2 + 3, 0, Math.PI * 2)
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'
+        ctx.lineWidth = 1.5
+        ctx.stroke()
+        ctx.restore()
+    }
 
     async function renderIntro(ctx, width, height) {
         const fps = 30
@@ -634,7 +712,6 @@ function Slideshow() {
             ctx.restore()
 
             // Add watermark to intro
-            // Animated watermark for intro - moving around the screen
             if (appIcon) {
                 const watermarkSize = width * 0.07
                 const margin = 20
@@ -855,61 +932,41 @@ function Slideshow() {
                 const watermarkSize = width * 0.08
                 const margin = 20
 
-                // Total animation cycle duration (in frames)
-                const cycleDuration = 300 // frames for a full cycle
+                const cycleDuration = 300
                 const cycleProgress = ((globalFrame + frame) % cycleDuration) / cycleDuration
 
-                // Determine which edge and position based on progress
                 let watermarkX, watermarkY
-                let isOnEdge = true
 
-                // Cycle through positions: top-right -> bottom-right -> bottom-left -> top-left -> back to top-right
                 if (cycleProgress < 0.25) {
-                    // Top edge moving from right to left
-                    const t = cycleProgress / 0.25 // 0 to 1
+                    const t = cycleProgress / 0.25
                     watermarkX = (width - watermarkSize - margin) * (1 - t)
                     watermarkY = margin
                 } else if (cycleProgress < 0.5) {
-                    // Left edge moving from top to bottom
-                    const t = (cycleProgress - 0.25) / 0.25 // 0 to 1
+                    const t = (cycleProgress - 0.25) / 0.25
                     watermarkX = margin
                     watermarkY = margin + (height - watermarkSize - margin * 2) * t
                 } else if (cycleProgress < 0.75) {
-                    // Bottom edge moving from left to right
-                    const t = (cycleProgress - 0.5) / 0.25 // 0 to 1
+                    const t = (cycleProgress - 0.5) / 0.25
                     watermarkX = margin + (width - watermarkSize - margin * 2) * t
                     watermarkY = height - watermarkSize - margin
                 } else {
-                    // Right edge moving from bottom to top
-                    const t = (cycleProgress - 0.75) / 0.25 // 0 to 1
+                    const t = (cycleProgress - 0.75) / 0.25
                     watermarkX = width - watermarkSize - margin
                     watermarkY = height - watermarkSize - margin - (height - watermarkSize - margin * 2) * t
                 }
 
-                // Add smooth easing to the movement
-                const easeInOutCubic = (t) => {
-                    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
-                }
-
-                // Pulsing scale effect
                 const pulseScale = 1 + Math.sin((globalFrame + frame) * 0.15) * 0.08
-
-                // Rotation effect (spins as it moves)
                 const rotation = (globalFrame + frame) * 0.03
 
                 ctx.save()
-
-                // Move to watermark position and apply transformations
                 ctx.translate(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2)
                 ctx.rotate(rotation)
                 ctx.scale(pulseScale, pulseScale)
                 ctx.translate(-(watermarkX + watermarkSize / 2), -(watermarkY + watermarkSize / 2))
 
-                // Glowing shadow effect
                 ctx.shadowColor = 'rgba(255, 105, 180, 0.6)'
                 ctx.shadowBlur = 12
 
-                // Outer pulsing ring
                 const ringPulse = 0.8 + Math.sin((globalFrame + frame) * 0.2) * 0.2
                 ctx.beginPath()
                 ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, (watermarkSize / 2 + 10) * ringPulse, 0, Math.PI * 2)
@@ -917,7 +974,6 @@ function Slideshow() {
                 ctx.lineWidth = 2.5
                 ctx.stroke()
 
-                // Second rotating ring
                 const ringRotation = (globalFrame + frame) * 0.02
                 ctx.beginPath()
                 ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, (watermarkSize / 2 + 15) * pulseScale, ringRotation, ringRotation + Math.PI * 1.8)
@@ -925,23 +981,19 @@ function Slideshow() {
                 ctx.lineWidth = 2
                 ctx.stroke()
 
-                // Background circle
                 ctx.beginPath()
                 ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, watermarkSize / 2 + 6, 0, Math.PI * 2)
                 ctx.fillStyle = `rgba(0, 0, 0, ${0.5 + Math.sin((globalFrame + frame) * 0.12) * 0.1})`
                 ctx.fill()
 
-                // Draw the app icon
                 ctx.drawImage(appIcon, watermarkX, watermarkY, watermarkSize, watermarkSize)
 
-                // Add a subtle white ring around the icon
                 ctx.beginPath()
                 ctx.arc(watermarkX + watermarkSize / 2, watermarkY + watermarkSize / 2, watermarkSize / 2 + 3, 0, Math.PI * 2)
                 ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)'
                 ctx.lineWidth = 1.5
                 ctx.stroke()
 
-                // Add small sparkle particles around the watermark when it's moving
                 if (Math.sin((globalFrame + frame) * 0.3) > 0.5) {
                     for (let s = 0; s < 3; s++) {
                         const angle = (globalFrame + frame) * 0.2 + s * Math.PI * 2 / 3
@@ -1182,7 +1234,7 @@ function Slideshow() {
         }
     }
 
-    // ========== VIDEO EXPORT FUNCTION ==========
+    // ========== FIXED VIDEO EXPORT FUNCTION ==========
 
     async function exportVideo() {
         if (!slides.length) {
@@ -1207,199 +1259,161 @@ function Slideshow() {
         canvas.width = width;
         canvas.height = height;
 
-        const videoStream = canvas.captureStream(FPS);
-        const videoTrack = videoStream.getVideoTracks()[0];
-
-        if (!videoTrack) {
-            alert('Could not capture video stream. Please try again.');
-            setIsRecording(false);
-            return;
-        }
-
-        try {
-            await videoTrack.applyConstraints({
-                frameRate: { ideal: FPS, min: 24, max: 30 }
-            });
-        } catch (e) {
-            console.warn('Frame rate constraint not supported:', e);
-        }
-
+        let recorder = null;
         let audioElement = null;
         let audioContext = null;
-        let audioSource = null;
         let audioDestination = null;
-        let audioTracks = [];
-        let audioInitialized = false;
+        let stream = null;
+        let recordingChunks = [];
+        let frameIndex = 0;
 
         try {
+            // Setup audio context FIRST (critical for mobile)
+            audioContext = await ensureAudioContext();
+            
+            // Create audio element and connect to context
             audioElement = new Audio(audioUrl);
-            audioElement.loop = false;
+            audioElement.loop = true;
             audioElement.volume = 0.3;
             audioElement.crossOrigin = 'anonymous';
-
-            audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                sampleRate: 48000
-            });
-
-            if (audioContext.state === 'suspended') {
+            
+            const source = audioContext.createMediaElementSource(audioElement);
+            audioDestination = audioContext.createMediaStreamDestination();
+            source.connect(audioDestination);
+            source.connect(audioContext.destination);
+            
+            // Setup canvas stream
+            const canvasStream = canvas.captureStream(FPS);
+            
+            // Combine streams if we have audio
+            if (audioDestination.stream.getAudioTracks().length > 0) {
+                stream = new MediaStream([
+                    ...canvasStream.getVideoTracks(),
+                    ...audioDestination.stream.getAudioTracks()
+                ]);
+            } else {
+                stream = canvasStream;
+            }
+            
+            // Find best MIME type for mobile compatibility
+            const mimeTypes = [
+                'video/mp4;codecs=h264,aac',
+                'video/mp4;codecs=avc1,mp4a',
+                'video/mp4',
+                'video/webm;codecs=vp8,opus',
+                'video/webm'
+            ];
+            
+            let mimeType = '';
+            for (const type of mimeTypes) {
+                if (MediaRecorder.isTypeSupported(type)) {
+                    mimeType = type;
+                    break;
+                }
+            }
+            
+            console.log('Using MIME type:', mimeType);
+            
+            const recorderOptions = {
+                mimeType: mimeType,
+                videoBitsPerSecond: 2500000,
+                audioBitsPerSecond: 128000
+            };
+            
+            recorder = new MediaRecorder(stream, recorderOptions);
+            
+            recorder.ondataavailable = (event) => {
+                if (event.data && event.data.size > 0) {
+                    recordingChunks.push(event.data);
+                }
+            };
+            
+            // Start recording
+            recorder.start(1000);
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Start audio
+            if (audioContext.state !== 'running') {
                 await audioContext.resume();
             }
-
-            audioSource = audioContext.createMediaElementSource(audioElement);
-            audioDestination = audioContext.createMediaStreamDestination();
-            audioSource.connect(audioDestination);
-            audioSource.connect(audioContext.destination);
-            audioTracks = audioDestination.stream.getAudioTracks();
-
-            if (audioTracks.length > 0) {
-                audioInitialized = true;
+            await audioElement.play();
+            
+            // Calculate total frames for progress
+            const introFrames = 120;
+            const slideFrames = 150;
+            const outroFrames = 180;
+            const totalFrames = introFrames + (slides.length * slideFrames) + outroFrames;
+            
+            // Render intro
+            await renderIntro(ctx, width, height);
+            frameIndex += introFrames;
+            setRecordingProgress(10);
+            
+            // Render each slide
+            let globalFrame = introFrames;
+            for (let i = 0; i < slides.length; i++) {
+                await renderSlideForVideo(ctx, width, height, slides[i], i + 1, slides.length, globalFrame);
+                globalFrame += slideFrames;
+                frameIndex += slideFrames;
+                setRecordingProgress(10 + Math.round(((i + 1) / slides.length) * 80));
             }
-        } catch (err) {
-            console.error('Audio setup failed:', err);
-            alert('Could not capture audio. The video will export without background music.');
-        }
-
-        let combinedStream;
-        try {
-            if (audioInitialized && audioTracks.length > 0) {
-                combinedStream = new MediaStream([videoTrack, ...audioTracks]);
-            } else {
-                combinedStream = new MediaStream([videoTrack]);
+            
+            // Render outro
+            await renderOutro(ctx, width, height);
+            setRecordingProgress(95);
+            
+            // Wait a moment then stop
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            if (recorder && recorder.state === 'recording') {
+                recorder.stop();
             }
-        } catch (err) {
-            combinedStream = new MediaStream([videoTrack]);
-        }
-
-        let mimeType = '';
-        const preferredTypes = [
-            'video/mp4; codecs="avc1.640028,mp4a.40.2"',
-            'video/mp4; codecs="avc1.42E01E,mp4a.40.2"',
-            'video/webm; codecs="vp9,opus"',
-            'video/webm; codecs="vp8,opus"',
-            'video/webm',
-            'video/mp4'
-        ];
-
-        for (const type of preferredTypes) {
-            if (MediaRecorder.isTypeSupported(type)) {
-                mimeType = type;
-                break;
+            
+            if (audioElement) {
+                audioElement.pause();
             }
-        }
-
-        const options = { mimeType, videoBitsPerSecond: 5000000, audioBitsPerSecond: 192000 };
-        let recorder;
-        try {
-            recorder = new MediaRecorder(combinedStream, options);
-        } catch (err) {
-            recorder = new MediaRecorder(combinedStream);
-        }
-
-        const chunks = [];
-
-        recorder.ondataavailable = (e) => {
-            if (e.data && e.data.size > 0) {
-                chunks.push(e.data);
+            
+            // Wait for final data
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            if (recordingChunks.length === 0) {
+                throw new Error('No video data was recorded');
             }
-        };
-
-        recorder.onstop = () => {
-            if (chunks.length === 0) {
-                alert('No video data was recorded. Please try again.');
-                cleanup();
-                return;
-            }
-
-            const blob = new Blob(chunks, { type: mimeType });
-            if (blob.size === 0) {
-                alert('The recorded video is empty. Please try again.');
-                cleanup();
-                return;
-            }
-
-            const url = URL.createObjectURL(blob);
+            
+            // Create and download video
+            const blob = new Blob(recordingChunks, { type: mimeType || 'video/mp4' });
+            const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
             const filename = code
-                ? `${eventText.action.toLowerCase()}-slideshow-${code}-${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`
-                : `${eventText.action.toLowerCase()}-slideshow-${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
-
+                ? `${eventText.action.toLowerCase()}-slideshow-${code}-${Date.now()}.${extension}`
+                : `${eventText.action.toLowerCase()}-slideshow-${Date.now()}.${extension}`;
+            
+            const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
             a.download = filename;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
-
-            setTimeout(() => URL.revokeObjectURL(url), 10000);
-            cleanup();
-        };
-
-        recorder.onerror = (e) => {
-            console.error('MediaRecorder error:', e.error);
-            alert('An error occurred during recording: ' + e.error.message);
-            cleanup();
-        };
-
-        function cleanup() {
-            if (combinedStream) {
-                combinedStream.getTracks().forEach(track => track.stop());
-            }
-            if (videoTrack) videoTrack.stop();
-            if (audioTracks && audioTracks.length > 0) {
-                audioTracks.forEach(track => track.stop());
-            }
-            if (audioContext) {
-                audioContext.close().catch(err => console.warn('Error closing AudioContext:', err));
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            
+            setRecordingProgress(100);
+            
+        } catch (err) {
+            console.error('Video export error:', err);
+            alert('An error occurred: ' + err.message);
+        } finally {
+            // Cleanup
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
             }
             if (audioElement) {
                 audioElement.pause();
                 audioElement.src = '';
-                audioElement.load();
+            }
+            if (audioContext) {
+                audioContext.close();
             }
             setIsRecording(false);
-            setRecordingProgress(0);
-        }
-
-        try {
-            recorder.start(100);
-
-            if (audioElement && audioInitialized) {
-                try {
-                    await audioElement.play();
-                } catch (err) {
-                    console.warn('Could not play audio:', err);
-                }
-            }
-
-            let globalFrame = 0
-
-            await renderIntro(ctx, width, height);
-            globalFrame += 120
-            setRecordingProgress(10);
-
-            for (let i = 0; i < slides.length; i++) {
-                await renderSlideForVideo(ctx, width, height, slides[i], i + 1, slides.length, globalFrame);
-                globalFrame += 150
-                setRecordingProgress(10 + Math.round(((i + 1) / slides.length) * 80));
-            }
-
-            await renderOutro(ctx, width, height);
-            setRecordingProgress(95);
-
-            await new Promise(resolve => setTimeout(resolve, 1000 / FPS));
-            recorder.stop();
-
-            if (audioElement) {
-                audioElement.pause();
-                audioElement.currentTime = 0;
-            }
-
-            setRecordingProgress(100);
-
-        } catch (err) {
-            console.error('Rendering error:', err);
-            alert('An error occurred during rendering: ' + err.message);
-            recorder.stop();
-            cleanup();
         }
     }
 
@@ -1667,5 +1681,4 @@ function KeyboardControls({ onNext, onPrev, onTogglePlay, onToggleMusic, onClose
     }, [onNext, onPrev, onTogglePlay, onToggleMusic, onCloseModal])
     return null
 }
-
 export default Slideshow
