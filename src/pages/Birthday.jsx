@@ -274,16 +274,16 @@ const Birthday = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50">
-        <div className="text-rose-500 text-2xl animate-pulse">Loading your surprise...</div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50 px-4">
+        <div className="text-rose-500 text-xl md:text-2xl animate-pulse text-center">Loading your surprise...</div>
       </div>
     );
   }
 
   if (error || !order) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50">
-        <div className="text-rose-500 text-2xl">Event not found</div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50 px-4">
+        <div className="text-rose-500 text-xl md:text-2xl text-center">Event not found</div>
       </div>
     );
   }
@@ -318,7 +318,7 @@ const Birthday = () => {
         {[...Array(15)].map((_, i) => (
           <div
             key={i}
-            className="absolute"
+            className="absolute hidden md:block"
             style={{
               left: `${Math.random() * 100}%`,
               animation: `floatUp ${6 + Math.random() * 4}s ease-in-out infinite`,
@@ -339,60 +339,66 @@ const Birthday = () => {
           90% { opacity: 0.6; }
           100% { transform: translateY(-100px) scale(1); opacity: 0; }
         }
+        @media (max-width: 768px) {
+          .mobile-padding {
+            padding-left: 1rem;
+            padding-right: 1rem;
+          }
+        }
       `}</style>
 
-      {/* Hero Section */}
-      <section className="min-h-screen flex items-center justify-center text-center px-6 relative z-10">
-        <div>
-          <h1 className="text-5xl md:text-6xl font-bold romantic-font text-rose-400 mb-4">
+      {/* Hero Section - Mobile Optimized */}
+      <section className="min-h-[80vh] md:min-h-screen flex items-center justify-center text-center px-4 md:px-6 relative z-10">
+        <div className="max-w-full">
+          <h1 className="text-3xl md:text-6xl font-bold romantic-font text-rose-400 mb-3 md:mb-4 break-words">
             To {nickname || 'You'} {eventEmoji}
           </h1>
-          <p className="text-white animate-pulse">Keep watching, beautiful ✨</p>
+          <p className="text-white text-sm md:text-base animate-pulse">Keep watching, beautiful ✨</p>
         </div>
       </section>
 
-      {/* Love Declaration */}
-      <section className="py-16 text-center px-6 relative z-10" style={{background: 'rgba(255,255,255,0.85)'}}>
+      {/* Love Declaration - Mobile Optimized */}
+      <section className="py-8 md:py-16 text-center px-4 md:px-6 relative z-10" style={{background: 'rgba(255,255,255,0.85)'}}>
         <div className="max-w-3xl mx-auto">
-          <div className="text-6xl mb-6">{eventEmoji}</div>
-          <h2 className="text-4xl font-bold romantic-font gradient-text mb-6">{heartMessage}</h2>
-          <p className="text-lg text-gray-600 leading-relaxed">
+          <div className="text-4xl md:text-6xl mb-4 md:mb-6">{eventEmoji}</div>
+          <h2 className="text-2xl md:text-4xl font-bold romantic-font gradient-text mb-4 md:mb-6 break-words">{heartMessage}</h2>
+          <p className="text-base md:text-lg text-gray-600 leading-relaxed text-left md:text-center">
             {letter || eventDefaultMessage}
           </p>
         </div>
       </section>
 
-      {/* Countdown */}
-      <section className="py-16 text-center px-6 relative z-10" style={{background: 'rgba(255,255,255,0.85)'}}>
-        <h2 className="text-3xl font-bold romantic-font text-rose-500 mb-8">
+      {/* Countdown - Mobile Optimized */}
+      <section className="py-8 md:py-16 text-center px-4 md:px-6 relative z-10" style={{background: 'rgba(255,255,255,0.85)'}}>
+        <h2 className="text-xl md:text-3xl font-bold romantic-font text-rose-500 mb-6 md:mb-8">
           Countdown To Your Special Day ⏰
         </h2>
-        <div className="flex justify-center gap-4 md:gap-6 flex-wrap">
-          <div className="bg-white w-20 h-20 md:w-24 md:h-24 rounded-2xl flex flex-col items-center justify-center shadow-lg border-2 border-rose-200">
-            <span className="text-2xl md:text-3xl font-bold text-rose-500">{formatNumber(countdown.days)}</span>
-            <span className="text-xs text-gray-500">Days</span>
+        <div className="flex justify-center gap-2 md:gap-6 flex-wrap">
+          <div className="bg-white w-16 h-16 md:w-24 md:h-24 rounded-xl md:rounded-2xl flex flex-col items-center justify-center shadow-lg border-2 border-rose-200">
+            <span className="text-xl md:text-3xl font-bold text-rose-500">{formatNumber(countdown.days)}</span>
+            <span className="text-[10px] md:text-xs text-gray-500">Days</span>
           </div>
-          <div className="bg-white w-20 h-20 md:w-24 md:h-24 rounded-2xl flex flex-col items-center justify-center shadow-lg border-2 border-rose-200">
-            <span className="text-2xl md:text-3xl font-bold text-pink-500">{formatNumber(countdown.hours)}</span>
-            <span className="text-xs text-gray-500">Hours</span>
+          <div className="bg-white w-16 h-16 md:w-24 md:h-24 rounded-xl md:rounded-2xl flex flex-col items-center justify-center shadow-lg border-2 border-rose-200">
+            <span className="text-xl md:text-3xl font-bold text-pink-500">{formatNumber(countdown.hours)}</span>
+            <span className="text-[10px] md:text-xs text-gray-500">Hours</span>
           </div>
-          <div className="bg-white w-20 h-20 md:w-24 md:h-24 rounded-2xl flex flex-col items-center justify-center shadow-lg border-2 border-rose-200">
-            <span className="text-2xl md:text-3xl font-bold text-purple-500">{formatNumber(countdown.minutes)}</span>
-            <span className="text-xs text-gray-500">Minutes</span>
+          <div className="bg-white w-16 h-16 md:w-24 md:h-24 rounded-xl md:rounded-2xl flex flex-col items-center justify-center shadow-lg border-2 border-rose-200">
+            <span className="text-xl md:text-3xl font-bold text-purple-500">{formatNumber(countdown.minutes)}</span>
+            <span className="text-[10px] md:text-xs text-gray-500">Minutes</span>
           </div>
-          <div className="bg-white w-20 h-20 md:w-24 md:h-24 rounded-2xl flex flex-col items-center justify-center shadow-lg border-2 border-rose-200">
-            <span className="text-2xl md:text-3xl font-bold text-rose-400">{formatNumber(countdown.seconds)}</span>
-            <span className="text-xs text-gray-500">Seconds</span>
+          <div className="bg-white w-16 h-16 md:w-24 md:h-24 rounded-xl md:rounded-2xl flex flex-col items-center justify-center shadow-lg border-2 border-rose-200">
+            <span className="text-xl md:text-3xl font-bold text-rose-400">{formatNumber(countdown.seconds)}</span>
+            <span className="text-[10px] md:text-xs text-gray-500">Seconds</span>
           </div>
         </div>
       </section>
 
-      {/* Tap to Reveal Button */}
+      {/* Tap to Reveal Button - Mobile Optimized */}
       {!revealed && (
-        <section className="py-20 text-center relative z-10">
+        <section className="py-12 md:py-20 text-center relative z-10 px-4">
           <button
             onClick={handleTapToReveal}
-            className="bg-gradient-to-r from-rose-500 to-pink-500 text-white px-10 py-4 rounded-full shadow-lg text-lg font-semibold hover:scale-105 transition-transform animate-bounce"
+            className="bg-gradient-to-r from-rose-500 to-pink-500 text-white px-6 md:px-10 py-3 md:py-4 rounded-full shadow-lg text-base md:text-lg font-semibold hover:scale-105 transition-transform animate-bounce w-auto max-w-[90%] mx-auto"
           >
             🎁 Tap To Open Your Surprise
           </button>
@@ -402,71 +408,71 @@ const Birthday = () => {
       {/* Revealed Content */}
       {revealed && (
         <div className="relative z-10">
-          {/* Celebration Message */}
-          <section className="py-16 text-center" style={{background: 'rgba(255,255,255,0.9)'}}>
-            <div className="text-6xl mb-4">🎉</div>
-            <h2 className="text-4xl font-bold romantic-font gradient-text">
+          {/* Celebration Message - Mobile Optimized */}
+          <section className="py-8 md:py-16 text-center px-4" style={{background: 'rgba(255,255,255,0.9)'}}>
+            <div className="text-4xl md:text-6xl mb-3 md:mb-4">🎉</div>
+            <h2 className="text-2xl md:text-4xl font-bold romantic-font gradient-text break-words">
               {eventTitle}, {nickname}! {eventEmoji}
             </h2>
           </section>
 
-          {/* Photo Gallery */}
-          <section className="py-10 px-6" style={{background: 'rgba(255,255,255,0.85)'}}>
-            <h2 className="text-center text-3xl font-bold romantic-font text-rose-500 mb-8">
+          {/* Photo Gallery - Mobile Optimized */}
+          <section className="py-8 md:py-10 px-4 md:px-6" style={{background: 'rgba(255,255,255,0.85)'}}>
+            <h2 className="text-center text-xl md:text-3xl font-bold romantic-font text-rose-500 mb-6 md:mb-8">
               Our Beautiful Memories 📸
             </h2>
-            <div className="flex overflow-x-auto space-x-6 px-4" style={{scrollbarWidth: 'none'}}>
+            <div className="flex overflow-x-auto space-x-4 md:space-x-6 px-2 md:px-4 pb-4" style={{scrollbarWidth: 'thin'}}>
               {galleryImages.map((img, index) => (
                 <img
                   key={index}
                   src={img}
                   alt={`Memory ${index + 1}`}
-                  className="rounded-2xl shadow-lg min-w-[280px] h-[400px] object-cover hover:scale-105 transition-transform"
+                  className="rounded-xl md:rounded-2xl shadow-lg min-w-[200px] md:min-w-[280px] h-[280px] md:h-[400px] object-cover hover:scale-105 transition-transform"
                 />
               ))}
             </div>
-            <p className="text-center text-gray-500 mt-4">Swipe to see more 💫</p>
+            <p className="text-center text-gray-500 text-sm md:text-base mt-3 md:mt-4">Swipe to see more 💫</p>
           </section>
 
-           {/* Slideshow Link */}
-           <section className="py-10 text-center" style={{background: 'rgba(255,255,255,0.85)'}}>
-            <div className="flex flex-col md:flex-row gap-4 justify-center">
+           {/* Slideshow Link - Mobile Optimized */}
+           <section className="py-8 md:py-10 text-center px-4" style={{background: 'rgba(255,255,255,0.85)'}}>
+            <div className="flex flex-col gap-3 md:gap-4 justify-center">
               <Link
                 to={`/slideshow/${code}`}
-                className="bg-gradient-to-r from-rose-500 to-pink-500 text-white font-bold py-3 px-6 rounded-full shadow-lg hover:scale-105 transition-transform inline-block"
+                className="bg-gradient-to-r from-rose-500 to-pink-500 text-white font-bold py-2.5 md:py-3 px-4 md:px-6 rounded-full shadow-lg hover:scale-105 transition-transform inline-block text-sm md:text-base"
               >
                 View Slideshow 🎬
               </Link>
             </div>
           </section>
 
-          {/* Received Gifts Section */}
+          {/* Received Gifts Section - Mobile Optimized */}
           {revealed && (
-            <section className="py-10 text-center px-6" style={{background: 'rgba(255,255,255,0.85)'}}>
+            <section className="py-8 md:py-10 text-center px-4 md:px-6" style={{background: 'rgba(255,255,255,0.85)'}}>
               <div className="max-w-4xl mx-auto">
-                <h3 className="text-2xl font-bold romantic-font gradient-text mb-6">
+                <h3 className="text-xl md:text-2xl font-bold romantic-font gradient-text mb-4 md:mb-6">
                   💝 Gifts Received ({receivedGifts.length})
                 </h3>
                 {receivedGifts.length === 0 ? (
-                  <p className="text-gray-500">
+                  <p className="text-gray-500 text-sm md:text-base">
                     No gifts received yet. Share your page link to start receiving gifts!
                   </p>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-3 md:gap-4">
                     {receivedGifts.map((gift, index) => (
-                      <div key={index} className="bg-white rounded-2xl p-5 shadow-lg border-2 border-rose-100 text-left">
-                        <div className="flex items-start gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-rose-400 to-pink-400 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+                      <div key={index} className="bg-white rounded-xl md:rounded-2xl p-4 md:p-5 shadow-lg border-2 border-rose-100 text-left">
+                        <div className="flex items-start gap-2 md:gap-3">
+                          <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-rose-400 to-pink-400 flex items-center justify-center text-white font-bold text-sm md:text-lg flex-shrink-0">
                             {gift.name?.charAt(0).toUpperCase() || 'A'}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="font-bold text-gray-700 mb-1">
+                            <div className="font-bold text-gray-700 text-sm md:text-base mb-1 break-words">
                               {gift.name || 'Anonymous'}
                             </div>
-                            <p className="text-gray-600 text-sm mb-2 leading-relaxed">
+                            <p className="text-gray-600 text-xs md:text-sm mb-2 leading-relaxed break-words">
                               {gift.message || 'No message'} 
                             </p>
-                            <div className="text-xs text-gray-400">
+                            <div className="text-[10px] md:text-xs text-gray-400">
                               {gift.date ? new Date(gift.date).toLocaleString() : 'Just now'}
                             </div>
                           </div>
@@ -482,9 +488,9 @@ const Birthday = () => {
         </div>
       )}
 
-      {/* Music Player */}
+      {/* Music Player - Mobile Optimized */}
       {audioUrl && (
-        <div className="fixed bottom-6 left-6 z-40">
+        <div className="fixed bottom-4 right-4 md:bottom-6 md:left-6 z-40">
           <audio ref={audioRef} src={audioUrl} loop preload="auto" />
           <button 
             onClick={() => {
@@ -496,9 +502,9 @@ const Birthday = () => {
                 }
               }
             }}
-            className="bg-white p-3 rounded-full shadow-lg hover:scale-110 transition-transform"
+            className="bg-white p-2 md:p-3 rounded-full shadow-lg hover:scale-110 transition-transform text-sm md:text-base"
           >
-            🎵 Play Music
+            🎵
           </button>
         </div>
       )}
