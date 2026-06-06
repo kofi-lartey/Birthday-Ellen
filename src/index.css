@@ -923,3 +923,46 @@ body {
     height: 100%;
     object-fit: cover;
 }
+
+@keyframes slideUp {
+  from { transform: translateY(24px); opacity: 0; filter: blur(6px); }
+  to { transform: translateY(0); opacity: 1; filter: blur(0); }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; visibility: hidden; }
+}
+
+@keyframes zoomIn {
+  from { transform: scale(0.94); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Floating custom event particles */
+.heart {
+  position: absolute;
+  top: -10%;
+  pointer-events: none;
+  z-index: 2;
+  user-select: none;
+  animation: fall infinite linear;
+}
+
+@keyframes fall {
+   0% { transform: translateY(-10vh) rotate(0deg); opacity: 0; }
+   10% { opacity: 0.6; }
+   90% { opacity: 0.6; }
+   100% { transform: translateY(110vh) rotate(360deg); opacity: 0; }
+}
+
+/* Progress bar animation for title overlay */
+@keyframes progress {
+   0% { width: 0%; }
+   100% { width: 100%; }
+}
