@@ -363,8 +363,24 @@ function Slideshow() {
     function closeDownloadModal() { setShowDownload(false); setDownloadImage('') }
 
     async function downloadImageFile() {
-        if (!downloadImage) { alert("No image available to download"); return }
-        await downloadImageWithOverlay(downloadImage, code ? `${eventText.action.toLowerCase()}-${code}-slide-${downloadSlideIndex + 1}.jpg` : `${eventText.action.toLowerCase()}-slide-${downloadSlideIndex + 1}.jpg`)
+        if (!downloadImage) {
+            alert("No image available to download");
+            return
+        }
+
+        // Find the slide data using the current index instead of URL matching
+        const currentSlide = slides[downloadSlideIndex];
+        if (!currentSlide) {
+            alert("Could not find slide data");
+            return;
+        }
+
+        await downloadImageWithOverlay(
+            currentSlide.photo,
+            code ? `${eventText.action.toLowerCase()}-${code}-slide-${downloadSlideIndex + 1}.jpg` : `${eventText.action.toLowerCase()}-slide-${downloadSlideIndex + 1}.jpg`,
+            false,
+            currentSlide  // Pass the slide data directly
+        )
     }
 
     async function downloadAllImages() {
@@ -374,7 +390,8 @@ function Slideshow() {
         try {
             for (let i = 0; i < slides.length; i++) {
                 const filename = code ? `${eventText.action.toLowerCase()}-${code}-slide-${i + 1}.jpg` : `${eventText.action.toLowerCase()}-slide-${i + 1}.jpg`
-                await downloadImageWithOverlay(slides[i].photo, filename, true)
+                // Pass the current slide data directly
+                await downloadImageWithOverlay(slides[i].photo, filename, true, slides[i])
                 setBulkDownloadProgress(Math.round(((i + 1) / slides.length) * 100))
             }
         } finally {
@@ -383,23 +400,48 @@ function Slideshow() {
         }
     }
 
-    async function downloadImageWithOverlay(imageUrl, filename, silent = false) {
+    async function downloadImageWithOverlay(imageUrl, filename, silent = false, providedSlideData = null) {
         return new Promise((resolve) => {
             const canvas = document.createElement('canvas')
             const ctx = canvas.getContext('2d')
             const img = new Image()
-            img.crossOrigin = 'anonymous'
+            img.crossOrigin = "Anonymous"
 
             let appIcon = null
             const loadAppIconPromise = loadAppIcon()
 
             img.onload = async () => {
-                canvas.width = img.width
-                canvas.height = img.height
-                ctx.drawImage(img, 0, 0)
+                // ⭐ FIX: Define a clean master max target dimension first
+                const maxDimension = 1200;
+                const imgAspect = img.width / img.height;
+
+                let targetWidth, targetHeight;
+
+                // ⭐ FIX: Derive canvas aspect bounding box logically from source shape
+                if (img.width > img.height) {
+                    targetWidth = maxDimension;
+                    targetHeight = maxDimension / imgAspect;
+                } else {
+                    targetHeight = maxDimension;
+                    targetWidth = maxDimension * imgAspect;
+                }
+
+                // Lock canvas dimensions securely
+                canvas.width = targetWidth;
+                canvas.height = targetHeight;
+
+                // ⭐ FIX: Center and scale image cleanly inside the newly constrained canvas
+                let drawWidth = canvas.width;
+                let drawHeight = canvas.height;
+                let drawX = 0;
+                let drawY = 0;
+
+                // Draw the background image safely
+                ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight)
 
                 appIcon = await loadAppIconPromise
 
+                // --- Below remains your overlay text & watermark rendering logic ---
                 const padding = canvas.width * 0.05
                 const boxWidth = canvas.width * 0.85
                 const boxX = (canvas.width - boxWidth) / 2
@@ -423,16 +465,30 @@ function Slideshow() {
                     return lines
                 }
 
-                const slideData = slides.find(s => s.photo === imageUrl) || { name: 'Memory', message: 'A special moment' }
+                let slideData = providedSlideData;
+                if (!slideData) {
+                    slideData = slides[downloadSlideIndex];
+                }
+                if (!slideData) {
+                    slideData = {
+                        name: 'Memory',
+                        message: 'A special moment',
+                        photo: imageUrl
+                    };
+                }
+
                 ctx.font = `${messageFontSize}px Outfit, sans-serif`
                 const messageLines = wrapText(slideData.message, boxWidth - padding * 2)
                 const boxHeight = padding + nameFontSize + padding / 2 + messageLines.length * lineHeight + padding
                 const boxY = canvas.height - boxHeight - canvas.width * 0.05
                 const radius = canvas.width * 0.03
+
+                // Warm Glassmorphism Overlay (Matching your romantic theme update!)
                 const gradient = ctx.createLinearGradient(boxX, boxY, boxX, boxY + boxHeight)
                 gradient.addColorStop(0, "rgba(236,72,153,0.9)")
                 gradient.addColorStop(1, "rgba(244,63,94,0.9)")
                 ctx.fillStyle = gradient
+
                 ctx.beginPath()
                 ctx.moveTo(boxX + radius, boxY)
                 ctx.lineTo(boxX + boxWidth - radius, boxY)
@@ -445,12 +501,16 @@ function Slideshow() {
                 ctx.quadraticCurveTo(boxX, boxY, boxX + radius, boxY)
                 ctx.closePath()
                 ctx.fill()
+
                 ctx.fillStyle = "#fff"
                 ctx.font = `bold ${nameFontSize}px Outfit, sans-serif`
                 ctx.fillText(slideData.name, canvas.width / 2, boxY + padding)
                 ctx.font = `${messageFontSize}px Outfit, sans-serif`
                 let startY = boxY + padding + nameFontSize + padding / 2
-                messageLines.forEach(line => { ctx.fillText(line, canvas.width / 2, startY); startY += lineHeight })
+                messageLines.forEach(line => {
+                    ctx.fillText(line, canvas.width / 2, startY);
+                    startY += lineHeight
+                })
 
                 if (appIcon) {
                     const watermarkSize = canvas.width * 0.08
@@ -472,15 +532,28 @@ function Slideshow() {
                 }
 
                 canvas.toBlob(blob => {
-                    if (!blob) { if (!silent) alert("Download failed."); resolve(); return }
+                    if (!blob) {
+                        if (!silent) alert("Download failed.");
+                        resolve();
+                        return
+                    }
                     const link = document.createElement("a")
                     link.href = URL.createObjectURL(blob)
                     link.download = filename
+                    document.body.appendChild(link)
                     link.click()
+                    document.body.removeChild(link)
+                    setTimeout(() => URL.revokeObjectURL(link.href), 100)
                     resolve()
                 }, "image/jpeg", 0.95)
             }
-            img.onerror = () => { if (!silent) alert("Image failed to load. Try again."); resolve() }
+
+            img.onerror = (err) => {
+                console.error('Image load error:', err);
+                if (!silent) alert("Image failed to load. Try again.");
+                resolve()
+            }
+
             img.src = imageUrl
         })
     }
@@ -1725,25 +1798,60 @@ function Slideshow() {
             )}
 
             {showDownload && (
-                <div className="download-modal active fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={closeDownloadModal}>
-                    <div className="download-content bg-gray-900 rounded-2xl p-6 max-w-sm w-full mx-4 text-center" onClick={e => e.stopPropagation()}>
-                        <button className="close-modal float-right text-gray-400 hover:text-white" onClick={closeDownloadModal}>✕</button>
-                        <h2 className="romantic-font text-2xl mb-4">Save This Memory 📸</h2>
-                        <img src={downloadImage} alt="Preview" className="download-preview w-full rounded-lg mb-4" />
-                        <div className="download-buttons flex gap-3 justify-center">
-                            <button className="download-btn primary bg-pink-600 px-4 py-2 rounded-full text-white flex items-center gap-2" onClick={downloadImageFile}>
-                                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                                Download
-                            </button>
-                            <button className="download-btn secondary bg-gray-700 px-4 py-2 rounded-full text-white flex items-center gap-2" onClick={() => { shareToWhatsApp(); closeDownloadModal(); }}>
-                                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
-                                Share
-                            </button>
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8 bg-black/40 backdrop-blur-md transition-all duration-500"
+                    onClick={closeDownloadModal}
+                >
+                    {/* Responsive Container: Scales nicely on desktop vs mobile */}
+                    <div
+                        className="relative w-full max-w-4xl max-h-[90vh] flex flex-col md:flex-row gap-8 p-6 md:p-10 rounded-3xl bg-white/[0.06] backdrop-blur-3xl border border-white/20 shadow-2xl overflow-y-auto"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Close Button */}
+                        <button
+                            className="absolute top-4 right-4 text-white/50 hover:text-white transition-colors p-2"
+                            onClick={closeDownloadModal}
+                        >
+                            <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+
+                        {/* Left Side: The Clear, Full Image Display */}
+                        <div className="flex-1 flex items-center justify-center bg-black/20 rounded-2xl overflow-hidden border border-white/10 shadow-inner">
+                            <img
+                                src={downloadImage}
+                                alt="Memory"
+                                className="w-full h-full object-contain max-h-[70vh]"
+                            />
+                        </div>
+
+                        {/* Right Side: Details and Actions */}
+                        <div className="w-full md:w-80 flex flex-col justify-center space-y-6 text-center md:text-left">
+                            <div className="space-y-2">
+                                <h1 className="text-3xl font-bold text-white tracking-tight">Save This Memory 📸</h1>
+                                <p className="text-white/70">Keep a beautiful snapshot of this special moment forever.</p>
+                            </div>
+
+                            {/* Updated Buttons Section: Forced flex-row to keep buttons side-by-side on all screen sizes */}
+                            <div className="flex flex-row gap-3 w-full max-w-sm mx-auto">
+                                <button
+                                    onClick={downloadImageFile}
+                                    className="flex-1 px-3 py-4 bg-gradient-to-r from-rose-500 to-amber-500 text-white rounded-xl font-bold text-sm transition-transform hover:scale-[1.02] active:scale-95"
+                                >
+                                    Download
+                                </button>
+                                <button
+                                    onClick={() => { shareToWhatsApp(); closeDownloadModal(); }}
+                                    className="flex-1 px-3 py-4 bg-white/10 text-white rounded-xl font-bold text-sm hover:bg-white/20 transition-all active:scale-95"
+                                >
+                                    Share
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
             )}
-
             <KeyboardControls onNext={nextSlide} onPrev={prevSlide} onTogglePlay={togglePlay} onToggleMusic={toggleMusic} onCloseModal={closeDownloadModal} />
         </div>
     )
