@@ -577,67 +577,156 @@ function Slideshow() {
         return audioCtx
     }
 
-    // Simple watermark - fixed position at bottom right, semi-transparent (NO TEXT)
-    // Moving watermark - slides across the screen like TikTok style
-    async function drawTikTokWatermark(ctx, appIcon, width, height, frame) {
+    async function drawTikTokWatermark(
+        ctx,
+        appIcon,
+        width,
+        height,
+        frame
+    ) {
         if (!appIcon) return;
 
-        const size = width * 0.08; // Small watermark
-        const margin = 15;
+        // =====================================
+        // SIZE
+        // =====================================
 
-        // Animated path: moves from corners around the screen
-        const cycleDuration = 600; // frames for full cycle
-        const cycleProgress = (frame % cycleDuration) / cycleDuration;
+        const baseSize = isMobile
+            ? Math.max(width * 0.20, 150)
+            : Math.max(width * 0.10, 120);
 
-        let x, y;
+        const margin = 40;
 
-        // Path: top-left -> top-right -> bottom-right -> bottom-left -> repeat
-        if (cycleProgress < 0.25) {
-            // Top edge: left to right
-            const t = cycleProgress / 0.25;
-            x = margin + (width - size - margin * 2) * t;
-            y = margin;
-        } else if (cycleProgress < 0.5) {
-            // Right edge: top to bottom
-            const t = (cycleProgress - 0.25) / 0.25;
-            x = width - size - margin;
-            y = margin + (height - size - margin * 2) * t;
-        } else if (cycleProgress < 0.75) {
-            // Bottom edge: right to left
-            const t = (cycleProgress - 0.5) / 0.25;
-            x = width - size - margin - (width - size - margin * 2) * t;
-            y = height - size - margin;
-        } else {
-            // Left edge: bottom to top
-            const t = (cycleProgress - 0.75) / 0.25;
-            x = margin;
-            y = height - size - margin - (height - size - margin * 2) * t;
-        }
+        // =====================================
+        // MOVEMENT PATH
+        // =====================================
 
-        // Subtle pulse effect
-        const pulseScale = 1 + Math.sin(frame * 0.1) * 0.05;
+        const cycleDuration = 300;
+
+        const angle =
+            ((frame % cycleDuration) / cycleDuration) *
+            Math.PI *
+            2;
+
+        const orbitX =
+            width / 2 -
+            margin -
+            baseSize / 2;
+
+        const orbitY =
+            height / 2 -
+            margin -
+            baseSize / 2;
+
+        const x =
+            width / 2 +
+            Math.cos(angle) * orbitX -
+            baseSize / 2;
+
+        const y =
+            height / 2 +
+            Math.sin(angle) * orbitY -
+            baseSize / 2;
+
+        // =====================================
+        // ANIMATIONS
+        // =====================================
+
+        const pulse =
+            1 +
+            Math.sin(frame * 0.05) *
+            0.15;
+
+        const rotation =
+            Math.sin(frame * 0.02) *
+            0.25;
+
+        // =====================================
+        // DRAW
+        // =====================================
 
         ctx.save();
-        ctx.translate(x + size / 2, y + size / 2);
-        ctx.scale(pulseScale, pulseScale);
-        ctx.translate(-(x + size / 2), -(y + size / 2));
 
-        // Background circle with glow
+        ctx.translate(
+            x + baseSize / 2,
+            y + baseSize / 2
+        );
+
+        ctx.rotate(rotation);
+
+        ctx.scale(pulse, pulse);
+
+        // =====================================
+        // GLOW
+        // =====================================
+
+        ctx.shadowColor = "#ff6b9d";
+        ctx.shadowBlur = 20;
+        ctx.shadowOffsetY = 2;
+        ctx.lineWidth = 2;
+
+        // =====================================
+        // OUTER RING
+        // =====================================
+
         ctx.beginPath();
-        ctx.arc(x + size / 2, y + size / 2, size / 2 + 4, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+
+        ctx.arc(
+            0,
+            0,
+            baseSize / 2 + 10,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fillStyle = "rgba(0,0,0,0.45)";
         ctx.fill();
 
-        // Outer ring
-        ctx.beginPath();
-        ctx.arc(x + size / 2, y + size / 2, size / 2 + 6, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(255, 107, 157, 0.5)';
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle =
+            "rgba(255,255,255,0.35)";
+        ctx.lineWidth = 4;
         ctx.stroke();
 
-        // Draw logo
-        ctx.globalAlpha = 0.85;
-        ctx.drawImage(appIcon, x, y, size, size);
+        // =====================================
+        // GLASS HIGHLIGHT
+        // =====================================
+
+        ctx.beginPath();
+
+        ctx.arc(
+            -baseSize * 0.12,
+            -baseSize * 0.15,
+            baseSize * 0.22,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fillStyle =
+            "rgba(255,255,255,0.15)";
+        ctx.fill();
+
+        // =====================================
+        // CLIP ICON
+        // =====================================
+
+        ctx.beginPath();
+
+        ctx.arc(
+            0,
+            0,
+            baseSize / 2,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.clip();
+
+        ctx.drawImage(
+            appIcon,
+            -baseSize / 2,
+            -baseSize / 2,
+            baseSize,
+            baseSize
+        );
 
         ctx.restore();
     }
@@ -651,297 +740,440 @@ function Slideshow() {
         ctx.fillText('Designed by KofiLartey', width / 2, height - 20);
     }
 
-    // Intro render
-    async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
-        const appIcon = await loadAppIcon()
+   function easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
+}
 
-        for (let i = 0; i < totalFrames; i++) {
-            const progress = i / totalFrames
-            const easeProgress = 1 - Math.pow(1 - progress, 3)
+// Liquid wave helper
+function wave(t, x) {
+    return Math.sin(x * 0.08 + t * 6) * 3;
+}
 
-            // Background gradient
-            const grad = ctx.createLinearGradient(width / 2, 0, width / 2, height)
-            grad.addColorStop(0, '#1a1a2e')
-            grad.addColorStop(1, '#0a0a0a')
-            ctx.fillStyle = grad
-            ctx.fillRect(0, 0, width, height)
+function loadImage(url) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = url;
+    });
+}
 
-            // Add particles
-            const particleCount = isMobile ? 15 : 35
-            for (let p = 0; p < particleCount; p++) {
-                const seed = 100 + p * 23
-                const px = (seed * 37 + i * 0.5) % (width + 100) - 50
-                const py = ((seed * 53 + i * 0.8) % (height + 100)) - 50
-                ctx.save()
-                ctx.globalAlpha = 0.3 + (seed % 40) / 100
-                ctx.font = `${15 + (seed % 21)}px "Segoe UI Emoji"`
-                ctx.fillStyle = '#ff6b9d'
-                const emojis = ['❤️', '🎂', '🎈', '✨', '🎉', '💝']
-                ctx.fillText(emojis[seed % emojis.length], px, py)
-                ctx.restore()
-            }
+// =====================================================
+// INTRO RENDER — CLEAN LIQUID GLASS STYLE (NO EXPLOSION)
+// =====================================================
+async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
+    const appIcon = await loadAppIcon();
+    const bgImage = await loadImage(APP_ICON_URL);
 
-            // Title text
-            const scale = 0.5 + easeProgress * 0.6
-            const alpha = Math.min(1, progress * 2)
+    for (let i = 0; i < totalFrames; i++) {
+        const raw = i / totalFrames;
+        const progress = easeOutCubic(raw);
 
-            ctx.save()
-            ctx.shadowColor = 'rgba(255, 105, 180, 0.6)'
-            ctx.shadowBlur = 25
-            ctx.translate(width / 2, height / 2)
-            ctx.scale(scale, scale)
-            ctx.globalAlpha = alpha
+        const isComplete = progress >= 0.999;
 
-            const titleFontSize = isMobile ? Math.min(45, width * 0.1) : 80
-            const nameFontSize = isMobile ? Math.min(40, width * 0.09) : 70
+        // phase split (clean transition)
+        const iconPhase = Math.min(1, progress / 0.35);   // icon focus
+        const revealPhase = Math.max(0, (progress - 0.35) / 0.65);
 
-            ctx.font = `bold ${titleFontSize}px "Playfair Display", serif`
-            ctx.fillStyle = '#ff6b9d'
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'middle'
-            ctx.fillText(eventText.title, 0, -30)
+        ctx.clearRect(0, 0, width, height);
 
-            ctx.font = `bold ${nameFontSize}px "Dancing Script", cursive`
-            ctx.fillStyle = '#fff'
-            ctx.fillText(`${celebrantName} ${eventText.emoji}`, 0, 50)
-            ctx.restore()
+        // =====================================================
+        // 1. BACKGROUND (CINEMATIC BLUR)
+        // =====================================================
+        if (bgImage) {
+            ctx.save();
+            ctx.globalAlpha = 0.55;
+            ctx.filter = "blur(35px) saturate(1.6) contrast(1.2)";
 
-            // Add designer credit
-            // drawDesignerCredit(ctx, width, height, i)
+            const scale = Math.max(
+                width / bgImage.width,
+                height / bgImage.height
+            );
 
-            // Add watermark
-            await drawTikTokWatermark(ctx, appIcon, width, height, startFrame + i)
+            const x = (width - bgImage.width * scale) / 2;
+            const y = (height - bgImage.height * scale) / 2;
 
-            await new Promise(r => setTimeout(r, 1000 / 30))
+            ctx.drawImage(bgImage, x, y, bgImage.width * scale, bgImage.height * scale);
+            ctx.restore();
+
+            const overlay = ctx.createLinearGradient(0, 0, 0, height);
+            overlay.addColorStop(0, "rgba(8, 12, 20, 0.55)");
+            overlay.addColorStop(1, "rgba(3, 5, 10, 0.95)");
+
+            ctx.fillStyle = overlay;
+            ctx.fillRect(0, 0, width, height);
         }
-    }
 
-    // Slide render with glass morphism text box (like slideshow)
-    // Slide render with improved glass morphism and better text visibility
-    async function renderSlide(ctx, width, height, slide, slideNumber, totalSlides, globalFrame, frames) {
-        const img = new Image()
-        img.crossOrigin = "anonymous"
-        await new Promise(resolve => { img.onload = resolve; img.src = slide.photo })
-        const appIcon = await loadAppIcon()
+        // vignette
+        const vignette = ctx.createRadialGradient(
+            width / 2,
+            height / 2,
+            60,
+            width / 2,
+            height / 2,
+            Math.max(width, height)
+        );
+
+        vignette.addColorStop(0, "rgba(0,0,0,0)");
+        vignette.addColorStop(1, "rgba(0,0,0,0.75)");
+
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0, 0, width, height);
+
+        // =====================================================
+        // 2. GLASS CARD (SMOOTH REVEAL)
+        // =====================================================
+        const cardW = Math.min(width * 0.85, 520);
+        const cardH = 470;
+        const cardX = (width - cardW) / 2;
+        const cardY = (height - cardH) / 2;
+
+        ctx.save();
+
+        ctx.globalAlpha = revealPhase;
+
+        ctx.shadowColor = "rgba(0,0,0,0.65)";
+        ctx.shadowBlur = 70;
+        ctx.shadowOffsetY = 35;
+
+        const glass = ctx.createLinearGradient(
+            cardX,
+            cardY,
+            cardX,
+            cardY + cardH
+        );
+
+        glass.addColorStop(0, "rgba(20, 30, 50, 0.55)");
+        glass.addColorStop(0.5, "rgba(30, 40, 70, 0.25)");
+        glass.addColorStop(1, "rgba(10, 15, 30, 0.65)");
+
+        ctx.fillStyle = glass;
+        ctx.beginPath();
+        ctx.roundRect(cardX, cardY, cardW, cardH, 34);
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(255,255,255,0.08)";
+        ctx.stroke();
+
+        ctx.restore();
+
+        // =====================================================
+        // 3. ICON (SMOOTH FLOAT INTO POSITION)
+        // =====================================================
+        if (appIcon) {
+            ctx.save();
+
+            const floatY = Math.sin(progress * Math.PI * 2) * 5;
+            const baseY = cardY + 70;
+
+            // icon starts slightly higher and settles
+            const startOffset = 40 * (1 - iconPhase);
+            const iconY = baseY - startOffset + floatY;
+
+            ctx.translate(width / 2, iconY);
+
+            ctx.shadowColor = "rgba(99, 102, 241, 0.35)";
+            ctx.shadowBlur = 35;
+
+            ctx.fillStyle = "rgba(255,255,255,0.9)";
+            ctx.beginPath();
+            ctx.arc(0, 0, 60, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(0, 0, 52, 0, Math.PI * 2);
+            ctx.clip();
+
+            ctx.drawImage(appIcon, -52, -52, 104, 104);
+
+            ctx.restore();
+        }
+
+        // =====================================================
+        // 4. TEXT (FADE IN CLEANLY)
+        // =====================================================
+        const textAlpha = Math.min(1, Math.max(0, (revealPhase - 0.15) * 2));
+
+        ctx.save();
+        ctx.globalAlpha = textAlpha;
+        ctx.textAlign = "center";
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = `800 ${width * 0.06}px Outfit`;
+        ctx.fillText(eventText.title, width / 2, cardY + 190);
+
+        ctx.font = `600 ${width * 0.05}px Outfit`;
+        ctx.fillText(celebrantName, width / 2, cardY + 240);
+
+        ctx.fillStyle = "rgba(255,255,255,0.65)";
+        ctx.font = `400 ${width * 0.035}px Outfit`;
+        ctx.fillText(
+            "With love from your friends & family 💖",
+            width / 2,
+            cardY + 290
+        );
+
+        ctx.restore();
+
+        // =====================================================
+        // 5. CTA BUTTON
+        // =====================================================
+        const btnW = cardW * 0.7;
+        const btnH = 54;
+        const btnX = (width - btnW) / 2;
+        const btnY = cardY + 330;
+
+        ctx.save();
+
+        ctx.globalAlpha = revealPhase;
+
+        ctx.shadowColor = "rgba(99, 102, 241, 0.25)";
+        ctx.shadowBlur = 30;
+
+        const btnGrad = ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnH);
+        btnGrad.addColorStop(0, "rgba(59, 130, 246, 0.7)");
+        btnGrad.addColorStop(1, "rgba(236, 72, 153, 0.7)");
+
+        ctx.fillStyle = btnGrad;
+        ctx.beginPath();
+        ctx.roundRect(btnX, btnY, btnW, btnH, 18);
+        ctx.fill();
+
+        ctx.fillStyle = "#fff";
+        ctx.font = `600 18px Outfit`;
+        ctx.textAlign = "center";
+        ctx.fillText("✨ Open Our Story ✨", width / 2, btnY + 35);
+
+        ctx.restore();
+
+        // =====================================================
+        // 6. PROGRESS BAR (LIQUID STYLE)
+        // =====================================================
+        const barW = cardW * 0.72;
+        const barH = 10;
+        const barX = (width - barW) / 2;
+        const barY = btnY + 80;
+
+        ctx.save();
+
+        ctx.globalAlpha = revealPhase;
+
+        ctx.fillStyle = "rgba(255,255,255,0.06)";
+        ctx.beginPath();
+        ctx.roundRect(barX, barY, barW, barH, 20);
+        ctx.fill();
+
+        const fillW = barW * revealPhase;
+
+        const liquidGrad = ctx.createLinearGradient(
+            barX,
+            barY,
+            barX + fillW,
+            barY
+        );
+
+        liquidGrad.addColorStop(0, "rgba(59, 130, 246, 0.9)");
+        liquidGrad.addColorStop(0.5, "rgba(99, 102, 241, 0.9)");
+        liquidGrad.addColorStop(1, "rgba(236, 72, 153, 0.9)");
+
+        ctx.fillStyle = liquidGrad;
+
+        ctx.beginPath();
+        ctx.moveTo(barX, barY + barH);
+
+        for (let x = 0; x <= fillW; x += 6) {
+            const y = barY + wave(revealPhase, x);
+            ctx.lineTo(barX + x, y);
+        }
+
+        ctx.lineTo(barX + fillW, barY + barH);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.restore();
+
+        // =====================================================
+        // 7. FINAL PULSE
+        // =====================================================
+        if (isComplete) {
+            ctx.save();
+
+            const pulse = Math.sin(i * 0.3) * 0.5 + 0.5;
+
+            ctx.globalAlpha = pulse * 0.4;
+            ctx.strokeStyle = "rgba(99, 102, 241, 1)";
+            ctx.lineWidth = 4;
+
+            ctx.beginPath();
+            ctx.roundRect(cardX - 10, cardY - 10, cardW + 20, cardH + 20, 40);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        // =====================================================
+        // WATERMARK
+        // =====================================================
+        await drawTikTokWatermark(
+            ctx,
+            appIcon,
+            width,
+            height,
+            startFrame + i
+        );
+
+        await new Promise((r) => setTimeout(r, 1000 / 30));
+    }
+}
+
+    // IMPROVED SLIDE RENDER - Modern "Card" Overlay
+    async function renderSlide(
+        ctx,
+        width,
+        height,
+        slide,
+        slideNumber,
+        totalSlides,
+        globalFrame,
+        frames,
+        isMobile = true
+    ) {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+
+        await new Promise((resolve) => {
+            img.onload = resolve;
+            img.src = slide.photo;
+        });
+
+        const appIcon = await loadAppIcon();
 
         for (let frame = 0; frame < frames; frame++) {
-            ctx.clearRect(0, 0, width, height)
+            ctx.clearRect(0, 0, width, height);
 
-            // Enhanced Ken Burns effect (smoother zoom)
-            const progress = frame / frames
-            const zoom = 1 + Math.sin(progress * Math.PI) * 0.05
-            const panX = Math.sin(progress * Math.PI * 1.2) * 15
-            const panY = Math.cos(progress * Math.PI * 0.8) * 15
+            // =====================================
+            // DRAW IMAGE (COVER)
+            // =====================================
 
-            const imgRatio = img.width / img.height
-            const canvasRatio = width / height
+            const imgAspect = img.width / img.height;
+            const canvasAspect = width / height;
 
-            let drawWidth = width * zoom
-            let drawHeight = height * zoom
-            let drawX = (width - drawWidth) / 2 + panX
-            let drawY = (height - drawHeight) / 2 + panY
+            let drawWidth;
+            let drawHeight;
+            let drawX;
+            let drawY;
 
-            if (imgRatio > canvasRatio) {
-                drawHeight = drawWidth / imgRatio
-                drawY = (height - drawHeight) / 2 + panY
+            if (imgAspect > canvasAspect) {
+                drawHeight = height;
+                drawWidth = drawHeight * imgAspect;
+                drawX = (width - drawWidth) / 2;
+                drawY = 0;
             } else {
-                drawWidth = drawHeight * imgRatio
-                drawX = (width - drawWidth) / 2 + panX
+                drawWidth = width;
+                drawHeight = drawWidth / imgAspect;
+                drawX = 0;
+                drawY = (height - drawHeight) / 2;
             }
 
-            ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight)
+            ctx.drawImage(
+                img,
+                drawX,
+                drawY,
+                drawWidth,
+                drawHeight
+            );
 
-            // Enhanced overlay with gradient for better text readability
-            const overlayGradient = ctx.createLinearGradient(0, height * 0.6, 0, height)
-            overlayGradient.addColorStop(0, 'rgba(0,0,0,0.1)')
-            overlayGradient.addColorStop(0.4, 'rgba(0,0,0,0.5)')
-            overlayGradient.addColorStop(1, 'rgba(0,0,0,0.85)')
-            ctx.fillStyle = overlayGradient
-            ctx.fillRect(0, 0, width, height)
+            // =====================================
+            // GRADIENT CARD
+            // =====================================
 
-            // IMPROVED GLASS MORPHISM BOX - Larger and more readable
-            const boxHeight = isMobile ? Math.min(140, height * 0.18) : 160
-            const boxY = height - boxHeight - (isMobile ? 25 : 40)
-            const padding = isMobile ? 20 : 28
-            const borderRadius = 28
+            const cardWidth = width * 0.84;
+            const cardHeight = isMobile ? 130 : 170;
 
-            // Glass background with better blur simulation
-            ctx.save()
+            const cardX = (width - cardWidth) / 2;
+            const cardY = height - cardHeight - 55;
 
-            // Shadow for depth
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.4)'
-            ctx.shadowBlur = 20
-            ctx.shadowOffsetY = 5
+            const radius = 30;
 
-            // Semi-transparent background with gradient
-            const glassGradient = ctx.createLinearGradient(0, boxY, 0, boxY + boxHeight)
-            glassGradient.addColorStop(0, 'rgba(20, 15, 35, 0.85)')
-            glassGradient.addColorStop(0.5, 'rgba(35, 25, 50, 0.88)')
-            glassGradient.addColorStop(1, 'rgba(45, 35, 65, 0.92)')
-            ctx.fillStyle = glassGradient
+            // Shadow
+            ctx.save();
+            ctx.shadowColor = "rgba(0,0,0,0.25)";
+            ctx.shadowBlur = 25;
+            ctx.shadowOffsetY = 10;
 
-            // Rounded rectangle
-            ctx.beginPath()
-            ctx.moveTo(borderRadius, boxY)
-            ctx.lineTo(width - borderRadius, boxY)
-            ctx.quadraticCurveTo(width, boxY, width, boxY + borderRadius)
-            ctx.lineTo(width, boxY + boxHeight - borderRadius)
-            ctx.quadraticCurveTo(width, boxY + boxHeight, width - borderRadius, boxY + boxHeight)
-            ctx.lineTo(borderRadius, boxY + boxHeight)
-            ctx.quadraticCurveTo(0, boxY + boxHeight, 0, boxY + boxHeight - borderRadius)
-            ctx.lineTo(0, boxY + borderRadius)
-            ctx.quadraticCurveTo(0, boxY, borderRadius, boxY)
-            ctx.closePath()
-            ctx.fill()
+            // Gradient
+            const gradient = ctx.createLinearGradient(
+                cardX,
+                cardY,
+                cardX,
+                cardY + cardHeight
+            );
 
-            // Reset shadow for border
-            ctx.shadowBlur = 0
+            gradient.addColorStop(0, "#ff4fa3");
+            gradient.addColorStop(0.5, "#ff5d8f");
+            gradient.addColorStop(1, "#ff7b7b");
 
-            // Glass border with gradient
-            ctx.beginPath()
-            ctx.moveTo(borderRadius, boxY)
-            ctx.lineTo(width - borderRadius, boxY)
-            ctx.quadraticCurveTo(width, boxY, width, boxY + borderRadius)
-            ctx.lineTo(width, boxY + boxHeight - borderRadius)
-            ctx.quadraticCurveTo(width, boxY + boxHeight, width - borderRadius, boxY + boxHeight)
-            ctx.lineTo(borderRadius, boxY + boxHeight)
-            ctx.quadraticCurveTo(0, boxY + boxHeight, 0, boxY + boxHeight - borderRadius)
-            ctx.lineTo(0, boxY + borderRadius)
-            ctx.quadraticCurveTo(0, boxY, borderRadius, boxY)
-            ctx.closePath()
+            ctx.fillStyle = gradient;
 
-            const borderGradient = ctx.createLinearGradient(0, boxY, width, boxY + boxHeight)
-            borderGradient.addColorStop(0, 'rgba(255, 107, 157, 0.5)')
-            borderGradient.addColorStop(0.5, 'rgba(255, 158, 181, 0.4)')
-            borderGradient.addColorStop(1, 'rgba(255, 107, 157, 0.5)')
-            ctx.strokeStyle = borderGradient
-            ctx.lineWidth = 2
-            ctx.stroke()
+            ctx.beginPath();
+            ctx.roundRect(
+                cardX,
+                cardY,
+                cardWidth,
+                cardHeight,
+                radius
+            );
+            ctx.fill();
 
-            // Add subtle shine effect on glass
-            ctx.beginPath()
-            ctx.moveTo(borderRadius + 2, boxY + 2)
-            ctx.lineTo(width - borderRadius - 2, boxY + 2)
-            ctx.quadraticCurveTo(width - 2, boxY + 2, width - 2, boxY + borderRadius + 2)
-            ctx.lineTo(width - 2, boxY + 20)
-            ctx.lineTo(borderRadius + 2, boxY + 20)
-            ctx.lineTo(borderRadius + 2, boxY + borderRadius + 2)
-            ctx.closePath()
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.05)'
-            ctx.fill()
+            ctx.restore();
 
-            // NAME TEXT - Larger and more prominent
-            const nameFontSize = isMobile ? Math.min(28, width * 0.065) : 36
-            const nameGrad = ctx.createLinearGradient(width / 2 - 150, boxY + padding, width / 2 + 150, boxY + padding + nameFontSize)
-            nameGrad.addColorStop(0, '#ffb8d1')
-            nameGrad.addColorStop(0.3, '#ff9eb5')
-            nameGrad.addColorStop(0.7, '#ff85a8')
-            nameGrad.addColorStop(1, '#ff6b9d')
+            // =====================================
+            // NAME
+            // =====================================
 
-            ctx.fillStyle = nameGrad
-            ctx.font = `bold ${nameFontSize}px "Playfair Display", "Poppins", serif`
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.3)'
-            ctx.shadowBlur = 10
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'top'
-            ctx.fillText(slide.name, width / 2, boxY + padding)
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
 
-            // MESSAGE TEXT - Improved readability with background
-            const messageFontSize = isMobile ? Math.min(17, width * 0.042) : 22
-            ctx.font = `${messageFontSize}px "Poppins", sans-serif`
+            ctx.fillStyle = "#ffffff";
 
-            // Optional: Add subtle text background for better contrast
-            ctx.shadowBlur = 2
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)'
+            ctx.font = `700 ${isMobile ? width * 0.055 : width * 0.045
+                }px Poppins`;
 
-            let message = slide.message
-            const maxChars = isMobile ? 85 : 140
-            const maxLines = isMobile ? 3 : 4
-            if (message.length > maxChars) {
-                message = message.substring(0, maxChars - 3) + '...'
-            }
+            ctx.fillText(
+                slide.name,
+                width / 2,
+                cardY + cardHeight * 0.42
+            );
 
-            // Word wrap for long messages
-            const words = message.split(' ')
-            let lines = []
-            let currentLine = ''
+            // =====================================
+            // MESSAGE
+            // =====================================
 
-            for (let word of words) {
-                const testLine = currentLine + (currentLine ? ' ' : '') + word
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.95)' // Just for measurement
-                const metrics = ctx.measureText(testLine)
-                if (metrics.width > width - (padding * 2) && currentLine) {
-                    lines.push(currentLine)
-                    currentLine = word
-                    if (lines.length >= maxLines) break
-                } else {
-                    currentLine = testLine
-                }
-            }
-            if (currentLine && lines.length < maxLines) lines.push(currentLine)
+            ctx.font = `500 ${isMobile ? width * 0.038 : width * 0.03
+                }px Poppins`;
 
-            if (lines.length === 0) lines = [message]
+            ctx.fillText(
+                slide.message,
+                width / 2,
+                cardY + cardHeight * 0.72
+            );
 
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
-            ctx.shadowBlur = 4
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.3)'
+            // =====================================
+            // WATERMARK
+            // =====================================
 
-            const lineHeight = messageFontSize + 6
-            const messageY = boxY + padding + nameFontSize + 12
+            await drawTikTokWatermark(
+                ctx,
+                appIcon,
+                width,
+                height,
+                globalFrame + frame
+            );
 
-            lines.forEach((line, idx) => {
-                if (idx < maxLines) {
-                    ctx.fillText(line, width / 2, messageY + (idx * lineHeight))
-                }
-            })
-
-            // Add decorative accent line
-            ctx.beginPath()
-            ctx.moveTo(width / 2 - 40, messageY - 5)
-            ctx.lineTo(width / 2 + 40, messageY - 5)
-            ctx.strokeStyle = 'rgba(255, 107, 157, 0.6)'
-            ctx.lineWidth = 2
-            ctx.stroke()
-
-            ctx.beginPath()
-            ctx.moveTo(width / 2 - 25, messageY - 3)
-            ctx.lineTo(width / 2 + 25, messageY - 3)
-            ctx.strokeStyle = 'rgba(255, 107, 157, 0.3)'
-            ctx.lineWidth = 1.5
-            ctx.stroke()
-
-            ctx.restore()
-
-            // SLIDE COUNTER - Improved styling
-            ctx.save()
-            ctx.font = `${isMobile ? 13 : 15}px "Poppins", monospace`
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
-            ctx.shadowBlur = 4
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.3)'
-            ctx.textAlign = 'right'
-
-            // Counter background pill
-            const counterText = `${slideNumber}/${totalSlides}`
-            const counterMetrics = ctx.measureText(counterText)
-            const counterWidth = counterMetrics.width + 20
-            const counterHeight = 28
-            const counterX = width - 25
-            const counterY = 25
-
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
-            ctx.beginPath()
-            ctx.roundRect(counterX - counterWidth, counterY, counterWidth, counterHeight, 14)
-            ctx.fill()
-
-            ctx.fillStyle = 'rgba(255, 107, 157, 0.9)'
-            ctx.textAlign = 'center'
-            ctx.fillText(counterText, counterX - (counterWidth / 2), counterY + 19)
-            ctx.restore()
-
-            // Add moving watermark
-            await drawTikTokWatermark(ctx, appIcon, width, height, globalFrame + frame)
-
-            await new Promise(r => setTimeout(r, 1000 / 30))
+            await new Promise((r) =>
+                setTimeout(r, 1000 / 30)
+            );
         }
     }
 
@@ -963,130 +1195,203 @@ function Slideshow() {
         };
     }
 
-    // Outro render
-    // Outro render with logo at the end
+
     async function renderOutro(ctx, width, height, totalFrames, startFrame = 0) {
-        const appIcon = await loadAppIcon()
+        const appIcon = await loadAppIcon();
+        const bgImage = await loadImage(APP_ICON_URL);
 
         for (let i = 0; i < totalFrames; i++) {
-            const progress = i / totalFrames
+            const raw = i / totalFrames;
+            const progress = easeOutCubic(raw);
 
-            // Background gradient
-            const grad = ctx.createLinearGradient(0, 0, 0, height)
-            grad.addColorStop(0, '#1a1a3e')
-            grad.addColorStop(1, '#05050f')
-            ctx.fillStyle = grad
-            ctx.fillRect(0, 0, width, height)
+            ctx.clearRect(0, 0, width, height);
 
-            // Floating hearts (fade out towards the end)
-            const heartAlpha = Math.max(0, 1 - (progress * 1.5))
-            for (let h = 0; h < (isMobile ? 8 : 15); h++) {
-                const seed = 500 + h * 29
-                const hy = ((seed * 47 + i * 0.5) % (height + 100)) - 50
-                const hx = (seed * 137) % width
-                ctx.save()
-                ctx.globalAlpha = (0.3 + (seed % 10) / 25) * heartAlpha
-                ctx.font = `${20 + (seed % 11)}px "Segoe UI Emoji"`
-                ctx.fillStyle = '#ff6b9d'
-                ctx.fillText('❤️', hx, hy)
-                ctx.restore()
-            }
-
-            // Text animation (fades out to make room for logo)
-            const textAlpha = Math.min(1, progress * 2) * Math.max(0, 1 - (progress * 1.2))
-            const bounce = Math.sin(i * 0.1) * 5
-
-            if (textAlpha > 0) {
-                ctx.save()
-                ctx.globalAlpha = textAlpha
-                ctx.translate(width / 2, height / 2 + bounce)
-
-                const thankFontSize = isMobile ? Math.min(40, width * 0.09) : 60
-                ctx.font = `bold ${thankFontSize}px "Playfair Display", serif`
-                ctx.fillStyle = '#ff9eb5'
-                ctx.textAlign = 'center'
-                ctx.fillText('Thank You', 0, -50)
-
-                const loveFontSize = isMobile ? Math.min(28, width * 0.065) : 40
-                ctx.font = `${loveFontSize}px "Dancing Script", cursive`
-                ctx.fillStyle = '#fff'
-                ctx.fillText('Made with Love', 0, 20)
-
-                ctx.restore()
-            }
-
-            // LOGO ANIMATION - appears in the last 40% of the outro
-            const logoStartProgress = 0.6 // Logo starts appearing at 60%
-            let logoAlpha = 0
-            let logoScale = 0.5
-
-            if (progress > logoStartProgress) {
-                const logoProgress = (progress - logoStartProgress) / (1 - logoStartProgress)
-                logoAlpha = Math.min(1, logoProgress * 1.5)
-                logoScale = 0.5 + (logoProgress * 0.7) // Scale from 0.5 to 1.2
-                const bounceLogo = Math.sin(logoProgress * Math.PI) * 10
-                const finalScale = logoScale + (bounceLogo / 100)
-
-                ctx.save()
-                ctx.globalAlpha = logoAlpha
-                ctx.translate(width / 2, height / 2)
-                ctx.scale(finalScale, finalScale)
-
-                // Draw logo circle background
-                ctx.shadowColor = 'rgba(255, 107, 157, 0.5)'
-                ctx.shadowBlur = 20
-                ctx.beginPath()
-                ctx.arc(0, 0, 60, 0, Math.PI * 2)
-                ctx.fillStyle = 'rgba(255, 107, 157, 0.15)'
-                ctx.fill()
-
-                ctx.beginPath()
-                ctx.arc(0, 0, 50, 0, Math.PI * 2)
-                ctx.fillStyle = 'rgba(255, 107, 157, 0.3)'
-                ctx.fill()
-
-                // Draw app icon/logo
-                if (appIcon) {
-                    ctx.drawImage(appIcon, -35, -35, 70, 70)
-                } else {
-                    // Fallback emoji logo
-                    ctx.font = `bold ${isMobile ? 50 : 70}px "Segoe UI Emoji"`
-                    ctx.fillStyle = '#ff6b9d'
-                    ctx.textAlign = 'center'
-                    ctx.textBaseline = 'middle'
-                    ctx.fillText('🎂', 0, 0)
-                }
-
-                ctx.restore()
-
-                // Brand text that fades in after logo
-                if (logoAlpha > 0.5) {
-                    ctx.save()
-                    ctx.globalAlpha = logoAlpha - 0.3
-                    ctx.font = `${isMobile ? 16 : 20}px "Poppins", sans-serif`
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'
-                    ctx.textAlign = 'center'
-                    ctx.fillText('Birthday Slideshow', width / 2, height / 2 + 85)
-                    ctx.restore()
-                }
-            }
-
-            // Designer credit (fades out when logo appears)
-            const creditAlpha = Math.min(0.7, progress * 1.5) * Math.max(0, 1 - (progress * 1.3))
-            if (creditAlpha > 0) {
+            // =====================================================
+            // 1. BACKGROUND (BLURRED APP IMAGE)
+            // =====================================================
+            if (bgImage) {
                 ctx.save();
-                ctx.globalAlpha = creditAlpha;
-                ctx.font = `${isMobile ? 14 : 18}px "Poppins", sans-serif`;
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-                ctx.textAlign = 'center';
-                ctx.fillText('Designed by KofiLartey', width / 2, height - 40);
+                ctx.globalAlpha = 0.45;
+                ctx.filter = "blur(28px) saturate(1.4) contrast(1.1)";
+
+                const scale = Math.max(
+                    width / bgImage.width,
+                    height / bgImage.height
+                );
+
+                const x = (width - bgImage.width * scale) / 2;
+                const y = (height - bgImage.height * scale) / 2;
+
+                ctx.drawImage(
+                    bgImage,
+                    x,
+                    y,
+                    bgImage.width * scale,
+                    bgImage.height * scale
+                );
+
+                ctx.restore();
+
+                // dark cinematic overlay
+                const overlay = ctx.createLinearGradient(0, 0, 0, height);
+                overlay.addColorStop(0, "rgba(10, 15, 25, 0.55)");
+                overlay.addColorStop(1, "rgba(5, 8, 15, 0.92)");
+
+                ctx.fillStyle = overlay;
+                ctx.fillRect(0, 0, width, height);
+            }
+
+            // vignette
+            const vignette = ctx.createRadialGradient(
+                width / 2,
+                height / 2,
+                80,
+                width / 2,
+                height / 2,
+                Math.max(width, height)
+            );
+
+            vignette.addColorStop(0, "rgba(0,0,0,0)");
+            vignette.addColorStop(1, "rgba(0,0,0,0.65)");
+
+            ctx.fillStyle = vignette;
+            ctx.fillRect(0, 0, width, height);
+
+            // =====================================================
+            // 2. GLASS MIRROR CARD (DARK CINEMATIC)
+            // =====================================================
+            const cardSize = Math.min(width * 0.78, 420);
+            const cardX = (width - cardSize) / 2;
+            const cardY = (height - cardSize) / 2;
+
+            ctx.save();
+
+            ctx.shadowColor = "rgba(0,0,0,0.6)";
+            ctx.shadowBlur = 60;
+            ctx.shadowOffsetY = 30;
+
+            const glass = ctx.createLinearGradient(
+                cardX,
+                cardY,
+                cardX,
+                cardY + cardSize
+            );
+
+            glass.addColorStop(0, "rgba(15, 23, 42, 0.55)");
+            glass.addColorStop(0.5, "rgba(30, 41, 59, 0.25)");
+            glass.addColorStop(1, "rgba(15, 23, 42, 0.6)");
+
+            ctx.fillStyle = glass;
+
+            ctx.beginPath();
+            ctx.roundRect(cardX, cardY, cardSize, cardSize, 36);
+            ctx.fill();
+
+            ctx.strokeStyle = "rgba(255,255,255,0.08)";
+            ctx.stroke();
+
+            // reflection sweep
+            ctx.save();
+            ctx.beginPath();
+            ctx.roundRect(cardX, cardY, cardSize, cardSize, 36);
+            ctx.clip();
+
+            const shinePos = (progress * cardSize * 1.4) % (cardSize * 2);
+
+            const shine = ctx.createLinearGradient(
+                cardX + shinePos - cardSize,
+                0,
+                cardX + shinePos,
+                0
+            );
+
+            shine.addColorStop(0, "rgba(255,255,255,0)");
+            shine.addColorStop(0.5, "rgba(255,255,255,0.07)");
+            shine.addColorStop(1, "rgba(255,255,255,0)");
+
+            ctx.fillStyle = shine;
+            ctx.fillRect(cardX, cardY, cardSize, cardSize);
+
+            ctx.restore();
+            ctx.restore();
+
+            // =====================================================
+            // 3. LOGO (FLOAT + GLOW PULSE)
+            // =====================================================
+            const logoAlpha = Math.min(1, progress * 1.6);
+            const float = Math.sin(progress * Math.PI * 2) * 6;
+
+            ctx.save();
+            ctx.translate(width / 2, height / 2 - 60 + float);
+            ctx.scale(0.85 + logoAlpha * 0.15, 0.85 + logoAlpha * 0.15);
+            ctx.globalAlpha = logoAlpha;
+
+            // glow
+            ctx.shadowColor = "rgba(255, 0, 80, 0.35)";
+            ctx.shadowBlur = 30;
+
+            ctx.fillStyle = "rgba(255,255,255,0.9)";
+            ctx.beginPath();
+            ctx.arc(0, 0, 62, 0, Math.PI * 2);
+            ctx.fill();
+
+            if (appIcon) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(0, 0, 54, 0, Math.PI * 2);
+                ctx.clip();
+                ctx.drawImage(appIcon, -54, -54, 108, 108);
                 ctx.restore();
             }
 
-            // Add moving watermark
-            await drawTikTokWatermark(ctx, appIcon, width, height, startFrame + i)
+            ctx.restore();
 
-            await new Promise(r => setTimeout(r, 1000 / 30))
+            // =====================================================
+            // 4. TEXT (CLEAN CINEMATIC FADE)
+            // =====================================================
+            const textAlpha = Math.min(1, Math.max(0, (progress - 0.25) * 2));
+
+            ctx.save();
+            ctx.globalAlpha = textAlpha;
+            ctx.textAlign = "center";
+
+            ctx.fillStyle = "#ffffff";
+            ctx.font = `800 ${width * 0.07}px Outfit`;
+            ctx.fillText("Thank You!", width / 2, height / 2 + 80);
+
+            ctx.fillStyle = "rgba(255,255,255,0.7)";
+            ctx.font = `400 ${width * 0.04}px Outfit`;
+            ctx.fillText(
+                "Made with love for your special day",
+                width / 2,
+                height / 2 + 120
+            );
+
+            ctx.restore();
+
+            // =====================================================
+            // 5. CREDIT
+            // =====================================================
+            ctx.save();
+            ctx.globalAlpha = progress;
+            ctx.fillStyle = "rgba(255,255,255,0.35)";
+            ctx.font = `300 14px Playfair Display`;
+            ctx.textAlign = "center";
+            ctx.fillText("Designed by KofiLartey", width / 2, height - 30);
+            ctx.restore();
+
+            // =====================================================
+            // 6. WATERMARK
+            // =====================================================
+            await drawTikTokWatermark(
+                ctx,
+                appIcon,
+                width,
+                height,
+                startFrame + i
+            );
+
+            await new Promise((r) => setTimeout(r, 1000 / 30));
         }
     }
 
