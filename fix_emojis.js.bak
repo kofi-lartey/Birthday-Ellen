@@ -1,0 +1,64 @@
+const fs = require('fs');
+const path = require('path');
+
+const files = [
+  'src/pages/Slideshow.jsx',
+  'src/pages/EventView.jsx',
+  'src/pages/Birthday.jsx',
+  'src/pages/SelectPackage.jsx',
+  'src/App.jsx',
+  'src/components/InstallButton.jsx',
+  'src/pages/Dashboard.jsx',
+  'src/pages/Register.jsx',
+  'src/pages/Login.jsx',
+  'src/pages/ForgotPassword.jsx',
+  'src/pages/PaymentDetails.jsx',
+  'src/pages/AuthCallback.jsx',
+  'src/pages/CreateEvent.jsx',
+  'src/pages/Upload.jsx',
+  'src/pages/OrderUpload.jsx',
+  'src/pages/Order.jsx',
+  'src/pages/Welcome.jsx',
+  'src/pages/Gift.jsx',
+  'src/pages/ClaimGift.jsx',
+  'src/pages/Locked.jsx',
+  'src/pages/Home.jsx',
+  'src/pages/OrderStatus.jsx',
+  'src/pages/EditEvent.jsx',
+  'src/pages/AnniversaryView.jsx',
+  'src/pages/WeddingView.jsx',
+  'src/pages/HangoutView.jsx',
+  'src/pages/CreateParty.jsx',
+  'src/pages/EditOtherEvent.jsx',
+  'src/pages/CreateOtherEvent.jsx',
+  'src/pages/CreateAnniversary.jsx',
+  'src/pages/OtherEventView.jsx',
+  'src/pages/PartyView.jsx',
+  'src/pages/EditWedding.jsx',
+  'src/pages/CreateWedding.jsx',
+  'src/pages/EditHangout.jsx',
+  'src/pages/EditParty.jsx',
+  'src/pages/EditAnniversary.jsx',
+  'src/pages/CreateHangout.jsx',
+];
+
+const projectRoot = process.cwd();
+
+function fixFile(filePath) {
+  const fullPath = path.join(projectRoot, filePath);
+  if (!fs.existsSync(fullPath)) {
+    console.log('SKIP (not found):', filePath);
+    return 0;
+  }
+
+  let content = fs.readFileSync(fullPath, 'utf8');
+  let originalContent = content;
+  let changes = 0;
+
+  // define replacement pairs: [corrupt_mojibake, correct_emoji]
+  const replacements = [
+    ['🎂', '🎂'],
+  ];
+}
+
+console.log('fix_emojis script loaded');

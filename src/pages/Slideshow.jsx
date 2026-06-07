@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+﻿import { useState, useEffect, useRef } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase, STORAGE_KEYS } from '../supabase'
 
@@ -479,7 +479,7 @@ function Slideshow() {
 
                 ctx.font = `${messageFontSize}px Outfit, sans-serif`
                 const messageLines = wrapText(slideData.message, boxWidth - padding * 2)
-                const boxHeight = padding + nameFontSize + padding / 2 + messageLines.length * lineHeight + padding
+                const boxHeight = padding + nameFontSize + padding / 2 + (messageLines.length * lineHeight) + padding
                 const boxY = canvas.height - boxHeight - canvas.width * 0.05
                 const radius = canvas.width * 0.03
 
@@ -577,157 +577,113 @@ function Slideshow() {
         return audioCtx
     }
 
-    async function drawTikTokWatermark(
-        ctx,
-        appIcon,
-        width,
-        height,
-        frame
-    ) {
+    // ========== SIMPLIFIED WORKING TIKTOK WATERMARK ==========
+    // Moves: Top Left → Center → Center Right → Bottom Right → repeats
+    async function drawTikTokWatermark(ctx, appIcon, width, height, slideFrame, totalSlideFrames) {
         if (!appIcon) return;
-
-        // =====================================
-        // SIZE
-        // =====================================
 
         const baseSize = isMobile
             ? Math.max(width * 0.20, 150)
             : Math.max(width * 0.10, 120);
 
-        const margin = 40;
+        // Define the 4 positions (x, y)
+        const positions = [
+            { x: 20, y: 80 },                                        // Position 0: Top Left
+            { x: width / 2 - baseSize / 2, y: height / 2 - baseSize / 2 }, // Position 1: Center
+            { x: width - baseSize - 40, y: height / 2 - baseSize / 2 },    // Position 2: Center Right
+            { x: width - baseSize - 40, y: height - baseSize - 100 }       // Position 3: Bottom Right
+        ];
 
-        // =====================================
-        // MOVEMENT PATH
-        // =====================================
+        // Each segment: 60 frames for move + 60 frames for pause = 120 frames per position
+        // 4 positions = 480 frames total for one complete cycle
+        const FRAMES_PER_MOVE = 60;   // 2 seconds at 30fps
+        const FRAMES_PER_PAUSE = 60;  // 2 seconds at 30fps
+        const FRAMES_PER_SEGMENT = FRAMES_PER_MOVE + FRAMES_PER_PAUSE; // 120 frames per position
 
-        const cycleDuration = 300;
+        // Total cycle frames (4 positions)
+        const TOTAL_CYCLE_FRAMES = positions.length * FRAMES_PER_SEGMENT; // 480 frames = 16 seconds
 
-        const angle =
-            ((frame % cycleDuration) / cycleDuration) *
-            Math.PI *
-            2;
+        // Calculate where we are in the cycle
+        let cycleFrame = slideFrame % TOTAL_CYCLE_FRAMES;
 
-        const orbitX =
-            width / 2 -
-            margin -
-            baseSize / 2;
+        // Determine which position we're at (0, 1, 2, or 3)
+        let positionIndex = Math.floor(cycleFrame / FRAMES_PER_SEGMENT);
+        positionIndex = Math.min(positionIndex, positions.length - 1);
 
-        const orbitY =
-            height / 2 -
-            margin -
-            baseSize / 2;
+        // Calculate frames within this segment
+        let segmentFrame = cycleFrame % FRAMES_PER_SEGMENT;
 
-        const x =
-            width / 2 +
-            Math.cos(angle) * orbitX -
-            baseSize / 2;
+        // Calculate if we're moving or paused
+        let isMoving = segmentFrame < FRAMES_PER_MOVE;
+        let segmentProgress = isMoving
+            ? segmentFrame / FRAMES_PER_MOVE
+            : (segmentFrame - FRAMES_PER_MOVE) / FRAMES_PER_PAUSE;
 
-        const y =
-            height / 2 +
-            Math.sin(angle) * orbitY -
-            baseSize / 2;
+        // Calculate opacity (fade out at the end of movement and end of pause)
+        let opacity = 1;
+        if (isMoving && segmentProgress > 0.8) {
+            // Fade out during last 20% of movement
+            opacity = 1 - ((segmentProgress - 0.8) / 0.2);
+        } else if (!isMoving && segmentProgress > 0.7) {
+            // Fade out during last 30% of pause
+            opacity = 1 - ((segmentProgress - 0.7) / 0.3);
+        }
 
-        // =====================================
-        // ANIMATIONS
-        // =====================================
+        // Calculate current position
+        let x, y;
 
-        const pulse =
-            1 +
-            Math.sin(frame * 0.05) *
-            0.15;
+        if (isMoving) {
+            // Moving from current position to next position
+            const startPos = positions[positionIndex];
+            const nextIndex = (positionIndex + 1) % positions.length;
+            const endPos = positions[nextIndex];
 
-        const rotation =
-            Math.sin(frame * 0.02) *
-            0.25;
+            // Ease in-out for smooth movement
+            const easeProgress = segmentProgress < 0.5
+                ? 2 * segmentProgress * segmentProgress
+                : 1 - Math.pow(-2 * segmentProgress + 2, 3) / 2;
 
-        // =====================================
-        // DRAW
-        // =====================================
+            x = startPos.x + (endPos.x - startPos.x) * easeProgress;
+            y = startPos.y + (endPos.y - startPos.y) * easeProgress;
+        } else {
+            // Paused at current position
+            x = positions[positionIndex].x;
+            y = positions[positionIndex].y;
+        }
+
+        // Subtle pulse animation
+        const pulse = 1 + Math.sin(slideFrame * 0.08) * 0.08;
+        const rotation = Math.sin(slideFrame * 0.05) * 0.05;
 
         ctx.save();
-
-        ctx.translate(
-            x + baseSize / 2,
-            y + baseSize / 2
-        );
-
+        ctx.globalAlpha = Math.max(0, Math.min(1, opacity));
+        ctx.translate(x + baseSize / 2, y + baseSize / 2);
         ctx.rotate(rotation);
-
         ctx.scale(pulse, pulse);
 
-        // =====================================
-        // GLOW
-        // =====================================
-
-        ctx.shadowColor = "#ff6b9d";
-        ctx.shadowBlur = 20;
+        // Outer glow
+        ctx.shadowColor = "rgba(255,107,157,0.4)";
+        ctx.shadowBlur = 15;
         ctx.shadowOffsetY = 2;
-        ctx.lineWidth = 2;
 
-        // =====================================
-        // OUTER RING
-        // =====================================
-
+        // Outer dark ring
         ctx.beginPath();
-
-        ctx.arc(
-            0,
-            0,
-            baseSize / 2 + 10,
-            0,
-            Math.PI * 2
-        );
-
-        ctx.fillStyle = "rgba(0,0,0,0.45)";
+        ctx.arc(0, 0, baseSize / 2 + 10, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(0,0,0,0.35)";
         ctx.fill();
 
-        ctx.strokeStyle =
-            "rgba(255,255,255,0.35)";
-        ctx.lineWidth = 4;
+        // White ring
+        ctx.beginPath();
+        ctx.arc(0, 0, baseSize / 2 + 6, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(255,255,255,0.5)";
+        ctx.lineWidth = 2;
         ctx.stroke();
 
-        // =====================================
-        // GLASS HIGHLIGHT
-        // =====================================
-
+        // Icon
         ctx.beginPath();
-
-        ctx.arc(
-            -baseSize * 0.12,
-            -baseSize * 0.15,
-            baseSize * 0.22,
-            0,
-            Math.PI * 2
-        );
-
-        ctx.fillStyle =
-            "rgba(255,255,255,0.15)";
-        ctx.fill();
-
-        // =====================================
-        // CLIP ICON
-        // =====================================
-
-        ctx.beginPath();
-
-        ctx.arc(
-            0,
-            0,
-            baseSize / 2,
-            0,
-            Math.PI * 2
-        );
-
+        ctx.arc(0, 0, baseSize / 2, 0, Math.PI * 2);
         ctx.clip();
-
-        ctx.drawImage(
-            appIcon,
-            -baseSize / 2,
-            -baseSize / 2,
-            baseSize,
-            baseSize
-        );
-
+        ctx.drawImage(appIcon, -baseSize / 2, -baseSize / 2, baseSize, baseSize);
         ctx.restore();
     }
 
@@ -740,294 +696,135 @@ function Slideshow() {
         ctx.fillText('Designed by KofiLartey', width / 2, height - 20);
     }
 
-   function easeOutCubic(t) {
-    return 1 - Math.pow(1 - t, 3);
-}
-
-// Liquid wave helper
-function wave(t, x) {
-    return Math.sin(x * 0.08 + t * 6) * 3;
-}
-
-function loadImage(url) {
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => resolve(img);
-        img.onerror = () => resolve(null);
-        img.src = url;
-    });
-}
-
-// =====================================================
-// INTRO RENDER — CLEAN LIQUID GLASS STYLE (NO EXPLOSION)
-// =====================================================
-async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
-    const appIcon = await loadAppIcon();
-    const bgImage = await loadImage(APP_ICON_URL);
-
-    for (let i = 0; i < totalFrames; i++) {
-        const raw = i / totalFrames;
-        const progress = easeOutCubic(raw);
-
-        const isComplete = progress >= 0.999;
-
-        // phase split (clean transition)
-        const iconPhase = Math.min(1, progress / 0.35);   // icon focus
-        const revealPhase = Math.max(0, (progress - 0.35) / 0.65);
-
-        ctx.clearRect(0, 0, width, height);
-
-        // =====================================================
-        // 1. BACKGROUND (CINEMATIC BLUR)
-        // =====================================================
-        if (bgImage) {
-            ctx.save();
-            ctx.globalAlpha = 0.55;
-            ctx.filter = "blur(35px) saturate(1.6) contrast(1.2)";
-
-            const scale = Math.max(
-                width / bgImage.width,
-                height / bgImage.height
-            );
-
-            const x = (width - bgImage.width * scale) / 2;
-            const y = (height - bgImage.height * scale) / 2;
-
-            ctx.drawImage(bgImage, x, y, bgImage.width * scale, bgImage.height * scale);
-            ctx.restore();
-
-            const overlay = ctx.createLinearGradient(0, 0, 0, height);
-            overlay.addColorStop(0, "rgba(8, 12, 20, 0.55)");
-            overlay.addColorStop(1, "rgba(3, 5, 10, 0.95)");
-
-            ctx.fillStyle = overlay;
-            ctx.fillRect(0, 0, width, height);
-        }
-
-        // vignette
-        const vignette = ctx.createRadialGradient(
-            width / 2,
-            height / 2,
-            60,
-            width / 2,
-            height / 2,
-            Math.max(width, height)
-        );
-
-        vignette.addColorStop(0, "rgba(0,0,0,0)");
-        vignette.addColorStop(1, "rgba(0,0,0,0.75)");
-
-        ctx.fillStyle = vignette;
-        ctx.fillRect(0, 0, width, height);
-
-        // =====================================================
-        // 2. GLASS CARD (SMOOTH REVEAL)
-        // =====================================================
-        const cardW = Math.min(width * 0.85, 520);
-        const cardH = 470;
-        const cardX = (width - cardW) / 2;
-        const cardY = (height - cardH) / 2;
-
-        ctx.save();
-
-        ctx.globalAlpha = revealPhase;
-
-        ctx.shadowColor = "rgba(0,0,0,0.65)";
-        ctx.shadowBlur = 70;
-        ctx.shadowOffsetY = 35;
-
-        const glass = ctx.createLinearGradient(
-            cardX,
-            cardY,
-            cardX,
-            cardY + cardH
-        );
-
-        glass.addColorStop(0, "rgba(20, 30, 50, 0.55)");
-        glass.addColorStop(0.5, "rgba(30, 40, 70, 0.25)");
-        glass.addColorStop(1, "rgba(10, 15, 30, 0.65)");
-
-        ctx.fillStyle = glass;
-        ctx.beginPath();
-        ctx.roundRect(cardX, cardY, cardW, cardH, 34);
-        ctx.fill();
-
-        ctx.strokeStyle = "rgba(255,255,255,0.08)";
-        ctx.stroke();
-
-        ctx.restore();
-
-        // =====================================================
-        // 3. ICON (SMOOTH FLOAT INTO POSITION)
-        // =====================================================
-        if (appIcon) {
-            ctx.save();
-
-            const floatY = Math.sin(progress * Math.PI * 2) * 5;
-            const baseY = cardY + 70;
-
-            // icon starts slightly higher and settles
-            const startOffset = 40 * (1 - iconPhase);
-            const iconY = baseY - startOffset + floatY;
-
-            ctx.translate(width / 2, iconY);
-
-            ctx.shadowColor = "rgba(99, 102, 241, 0.35)";
-            ctx.shadowBlur = 35;
-
-            ctx.fillStyle = "rgba(255,255,255,0.9)";
-            ctx.beginPath();
-            ctx.arc(0, 0, 60, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.beginPath();
-            ctx.arc(0, 0, 52, 0, Math.PI * 2);
-            ctx.clip();
-
-            ctx.drawImage(appIcon, -52, -52, 104, 104);
-
-            ctx.restore();
-        }
-
-        // =====================================================
-        // 4. TEXT (FADE IN CLEANLY)
-        // =====================================================
-        const textAlpha = Math.min(1, Math.max(0, (revealPhase - 0.15) * 2));
-
-        ctx.save();
-        ctx.globalAlpha = textAlpha;
-        ctx.textAlign = "center";
-
-        ctx.fillStyle = "#ffffff";
-        ctx.font = `800 ${width * 0.06}px Outfit`;
-        ctx.fillText(eventText.title, width / 2, cardY + 190);
-
-        ctx.font = `600 ${width * 0.05}px Outfit`;
-        ctx.fillText(celebrantName, width / 2, cardY + 240);
-
-        ctx.fillStyle = "rgba(255,255,255,0.65)";
-        ctx.font = `400 ${width * 0.035}px Outfit`;
-        ctx.fillText(
-            "With love from your friends & family 💖",
-            width / 2,
-            cardY + 290
-        );
-
-        ctx.restore();
-
-        // =====================================================
-        // 5. CTA BUTTON
-        // =====================================================
-        const btnW = cardW * 0.7;
-        const btnH = 54;
-        const btnX = (width - btnW) / 2;
-        const btnY = cardY + 330;
-
-        ctx.save();
-
-        ctx.globalAlpha = revealPhase;
-
-        ctx.shadowColor = "rgba(99, 102, 241, 0.25)";
-        ctx.shadowBlur = 30;
-
-        const btnGrad = ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnH);
-        btnGrad.addColorStop(0, "rgba(59, 130, 246, 0.7)");
-        btnGrad.addColorStop(1, "rgba(236, 72, 153, 0.7)");
-
-        ctx.fillStyle = btnGrad;
-        ctx.beginPath();
-        ctx.roundRect(btnX, btnY, btnW, btnH, 18);
-        ctx.fill();
-
-        ctx.fillStyle = "#fff";
-        ctx.font = `600 18px Outfit`;
-        ctx.textAlign = "center";
-        ctx.fillText("✨ Open Our Story ✨", width / 2, btnY + 35);
-
-        ctx.restore();
-
-        // =====================================================
-        // 6. PROGRESS BAR (LIQUID STYLE)
-        // =====================================================
-        const barW = cardW * 0.72;
-        const barH = 10;
-        const barX = (width - barW) / 2;
-        const barY = btnY + 80;
-
-        ctx.save();
-
-        ctx.globalAlpha = revealPhase;
-
-        ctx.fillStyle = "rgba(255,255,255,0.06)";
-        ctx.beginPath();
-        ctx.roundRect(barX, barY, barW, barH, 20);
-        ctx.fill();
-
-        const fillW = barW * revealPhase;
-
-        const liquidGrad = ctx.createLinearGradient(
-            barX,
-            barY,
-            barX + fillW,
-            barY
-        );
-
-        liquidGrad.addColorStop(0, "rgba(59, 130, 246, 0.9)");
-        liquidGrad.addColorStop(0.5, "rgba(99, 102, 241, 0.9)");
-        liquidGrad.addColorStop(1, "rgba(236, 72, 153, 0.9)");
-
-        ctx.fillStyle = liquidGrad;
-
-        ctx.beginPath();
-        ctx.moveTo(barX, barY + barH);
-
-        for (let x = 0; x <= fillW; x += 6) {
-            const y = barY + wave(revealPhase, x);
-            ctx.lineTo(barX + x, y);
-        }
-
-        ctx.lineTo(barX + fillW, barY + barH);
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.restore();
-
-        // =====================================================
-        // 7. FINAL PULSE
-        // =====================================================
-        if (isComplete) {
-            ctx.save();
-
-            const pulse = Math.sin(i * 0.3) * 0.5 + 0.5;
-
-            ctx.globalAlpha = pulse * 0.4;
-            ctx.strokeStyle = "rgba(99, 102, 241, 1)";
-            ctx.lineWidth = 4;
-
-            ctx.beginPath();
-            ctx.roundRect(cardX - 10, cardY - 10, cardW + 20, cardH + 20, 40);
-            ctx.stroke();
-
-            ctx.restore();
-        }
-
-        // =====================================================
-        // WATERMARK
-        // =====================================================
-        await drawTikTokWatermark(
-            ctx,
-            appIcon,
-            width,
-            height,
-            startFrame + i
-        );
-
-        await new Promise((r) => setTimeout(r, 1000 / 30));
+    function easeOutCubic(t) {
+        return 1 - Math.pow(1 - t, 3);
     }
-}
 
-    // IMPROVED SLIDE RENDER - Modern "Card" Overlay
+    function loadImage(url) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(null);
+            img.src = url;
+        });
+    }
+
+    // Helper function to wrap text for video slides
+    function wrapTextForVideo(ctx, text, maxWidth, fontSize) {
+        ctx.font = `${fontSize}px Poppins`;
+        const words = text.split(" ");
+        const lines = [];
+        let line = "";
+
+        for (const word of words) {
+            const testLine = line + (line ? " " : "") + word;
+            const metrics = ctx.measureText(testLine);
+            if (metrics.width > maxWidth && line !== "") {
+                lines.push(line);
+                line = word;
+            } else {
+                line = testLine;
+            }
+        }
+        lines.push(line);
+        return lines;
+    }
+
+    // =====================================================
+    // INTRO RENDER - NO WATERMARK
+    // =====================================================
+    async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
+        const appIcon = await loadAppIcon();
+        const bgImage = await loadImage(APP_ICON_URL);
+
+        for (let i = 0; i < totalFrames; i++) {
+            const raw = i / totalFrames;
+            const progress = easeOutCubic(raw);
+            const revealPhase = Math.min(1, (progress - 0.2) / 0.8);
+
+            ctx.clearRect(0, 0, width, height);
+
+            // Background
+            if (bgImage) {
+                ctx.save();
+                ctx.globalAlpha = 0.55;
+                ctx.filter = "blur(35px) saturate(1.6) contrast(1.2)";
+                const scale = Math.max(width / bgImage.width, height / bgImage.height);
+                const x = (width - bgImage.width * scale) / 2;
+                const y = (height - bgImage.height * scale) / 2;
+                ctx.drawImage(bgImage, x, y, bgImage.width * scale, bgImage.height * scale);
+                ctx.restore();
+
+                const overlay = ctx.createLinearGradient(0, 0, 0, height);
+                overlay.addColorStop(0, "rgba(8, 12, 20, 0.55)");
+                overlay.addColorStop(1, "rgba(3, 5, 10, 0.95)");
+                ctx.fillStyle = overlay;
+                ctx.fillRect(0, 0, width, height);
+            }
+
+            // Glass card
+            const cardW = Math.min(width * 0.85, 520);
+            const cardH = 470;
+            const cardX = (width - cardW) / 2;
+            const cardY = (height - cardH) / 2;
+
+            ctx.save();
+            ctx.globalAlpha = revealPhase;
+            ctx.shadowColor = "rgba(0,0,0,0.65)";
+            ctx.shadowBlur = 70;
+            ctx.shadowOffsetY = 35;
+
+            const glass = ctx.createLinearGradient(cardX, cardY, cardX, cardY + cardH);
+            glass.addColorStop(0, "rgba(20, 30, 50, 0.55)");
+            glass.addColorStop(0.5, "rgba(30, 40, 70, 0.25)");
+            glass.addColorStop(1, "rgba(10, 15, 30, 0.65)");
+
+            ctx.fillStyle = glass;
+            ctx.beginPath();
+            ctx.roundRect(cardX, cardY, cardW, cardH, 34);
+            ctx.fill();
+            ctx.restore();
+
+            // Icon
+            if (appIcon) {
+                ctx.save();
+                const floatY = Math.sin(progress * Math.PI * 2) * 5;
+                const iconY = cardY + 70 + floatY;
+                ctx.translate(width / 2, iconY);
+                ctx.fillStyle = "rgba(255,255,255,0.9)";
+                ctx.beginPath();
+                ctx.arc(0, 0, 60, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(0, 0, 52, 0, Math.PI * 2);
+                ctx.clip();
+                ctx.drawImage(appIcon, -52, -52, 104, 104);
+                ctx.restore();
+            }
+
+            // Text
+            const textAlpha = Math.min(1, Math.max(0, (revealPhase - 0.15) * 2));
+            ctx.save();
+            ctx.globalAlpha = textAlpha;
+            ctx.textAlign = "center";
+            ctx.fillStyle = "#ffffff";
+            ctx.font = `800 ${width * 0.06}px Outfit`;
+            ctx.fillText(eventText.title, width / 2, cardY + 190);
+            ctx.font = `600 ${width * 0.05}px Outfit`;
+            ctx.fillText(celebrantName, width / 2, cardY + 240);
+            ctx.fillStyle = "rgba(255,255,255,0.65)";
+            ctx.font = `400 ${width * 0.035}px Outfit`;
+            ctx.fillText("With love from your friends & family 💖", width / 2, cardY + 290);
+            ctx.restore();
+
+            // NO WATERMARK on intro - removed the drawTikTokWatermark call
+
+            await new Promise((r) => setTimeout(r, 1000 / 30));
+        }
+    }
+
+    // IMPROVED SLIDE RENDER - With correct watermark
     async function renderSlide(
         ctx,
         width,
@@ -1044,25 +841,24 @@ async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
 
         await new Promise((resolve) => {
             img.onload = resolve;
+            img.onerror = resolve;
             img.src = slide.photo;
         });
+
+        if (!img.complete || img.naturalWidth === 0) {
+            return;
+        }
 
         const appIcon = await loadAppIcon();
 
         for (let frame = 0; frame < frames; frame++) {
             ctx.clearRect(0, 0, width, height);
 
-            // =====================================
-            // DRAW IMAGE (COVER)
-            // =====================================
-
+            // Draw image (cover)
             const imgAspect = img.width / img.height;
             const canvasAspect = width / height;
 
-            let drawWidth;
-            let drawHeight;
-            let drawX;
-            let drawY;
+            let drawWidth, drawHeight, drawX, drawY;
 
             if (imgAspect > canvasAspect) {
                 drawHeight = height;
@@ -1076,24 +872,28 @@ async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
                 drawY = (height - drawHeight) / 2;
             }
 
-            ctx.drawImage(
-                img,
-                drawX,
-                drawY,
-                drawWidth,
-                drawHeight
-            );
+            ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
 
             // =====================================
-            // GRADIENT CARD
+            // DYNAMIC CARD - Height grows with text
             // =====================================
 
+            const nameFontSize = isMobile ? width * 0.055 : width * 0.045;
+            const messageFontSize = isMobile ? width * 0.038 : width * 0.03;
+            const padding = 20;
             const cardWidth = width * 0.84;
-            const cardHeight = isMobile ? 130 : 170;
-
             const cardX = (width - cardWidth) / 2;
-            const cardY = height - cardHeight - 55;
 
+            // Calculate message lines
+            ctx.font = `500 ${messageFontSize}px Poppins`;
+            const messageLines = wrapTextForVideo(ctx, slide.message, cardWidth - padding * 2, messageFontSize);
+
+            // Calculate card height based on content (reduced spacing)
+            const nameHeight = nameFontSize + 15;
+            const messageHeight = messageLines.length * (messageFontSize + 6);
+            const cardHeight = Math.max(120, nameHeight + messageHeight + 30);
+
+            const cardY = height - cardHeight - 55;
             const radius = 30;
 
             // Shadow
@@ -1103,13 +903,7 @@ async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
             ctx.shadowOffsetY = 10;
 
             // Gradient
-            const gradient = ctx.createLinearGradient(
-                cardX,
-                cardY,
-                cardX,
-                cardY + cardHeight
-            );
-
+            const gradient = ctx.createLinearGradient(cardX, cardY, cardX, cardY + cardHeight);
             gradient.addColorStop(0, "#ff4fa3");
             gradient.addColorStop(0.5, "#ff5d8f");
             gradient.addColorStop(1, "#ff7b7b");
@@ -1117,67 +911,35 @@ async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
             ctx.fillStyle = gradient;
 
             ctx.beginPath();
-            ctx.roundRect(
-                cardX,
-                cardY,
-                cardWidth,
-                cardHeight,
-                radius
-            );
+            ctx.roundRect(cardX, cardY, cardWidth, cardHeight, radius);
             ctx.fill();
-
             ctx.restore();
 
-            // =====================================
-            // NAME
-            // =====================================
-
+            // Name - closer to top
             ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-
+            ctx.textBaseline = "top";
             ctx.fillStyle = "#ffffff";
+            ctx.font = `700 ${nameFontSize}px Poppins`;
+            ctx.fillText(slide.name, width / 2, cardY + 15);
 
-            ctx.font = `700 ${isMobile ? width * 0.055 : width * 0.045
-                }px Poppins`;
+            // Message lines - closer to name
+            ctx.font = `500 ${messageFontSize}px Poppins`;
+            ctx.fillStyle = "rgba(255,255,255,0.95)";
 
-            ctx.fillText(
-                slide.name,
-                width / 2,
-                cardY + cardHeight * 0.42
-            );
+            let messageY = cardY + nameFontSize + 25;
+            for (const line of messageLines) {
+                ctx.fillText(line, width / 2, messageY);
+                messageY += messageFontSize + 6;
+            }
 
-            // =====================================
-            // MESSAGE
-            // =====================================
+            // Watermark - show throughout the slide with the full animation path
+            await drawTikTokWatermark(ctx, appIcon, width, height, globalFrame + frame, frames, true);
 
-            ctx.font = `500 ${isMobile ? width * 0.038 : width * 0.03
-                }px Poppins`;
-
-            ctx.fillText(
-                slide.message,
-                width / 2,
-                cardY + cardHeight * 0.72
-            );
-
-            // =====================================
-            // WATERMARK
-            // =====================================
-
-            await drawTikTokWatermark(
-                ctx,
-                appIcon,
-                width,
-                height,
-                globalFrame + frame
-            );
-
-            await new Promise((r) =>
-                setTimeout(r, 1000 / 30)
-            );
+            await new Promise((r) => setTimeout(r, 1000 / 30));
         }
     }
 
-    // Helper function for rounded rectangles (if not already defined)
+    // Helper function for rounded rectangles
     if (!CanvasRenderingContext2D.prototype.roundRect) {
         CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
             if (w < 2 * r) r = w / 2;
@@ -1195,7 +957,6 @@ async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
         };
     }
 
-
     async function renderOutro(ctx, width, height, totalFrames, startFrame = 0) {
         const appIcon = await loadAppIcon();
         const bgImage = await loadImage(APP_ICON_URL);
@@ -1206,118 +967,43 @@ async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
 
             ctx.clearRect(0, 0, width, height);
 
-            // =====================================================
-            // 1. BACKGROUND (BLURRED APP IMAGE)
-            // =====================================================
             if (bgImage) {
                 ctx.save();
                 ctx.globalAlpha = 0.45;
                 ctx.filter = "blur(28px) saturate(1.4) contrast(1.1)";
-
-                const scale = Math.max(
-                    width / bgImage.width,
-                    height / bgImage.height
-                );
-
+                const scale = Math.max(width / bgImage.width, height / bgImage.height);
                 const x = (width - bgImage.width * scale) / 2;
                 const y = (height - bgImage.height * scale) / 2;
-
-                ctx.drawImage(
-                    bgImage,
-                    x,
-                    y,
-                    bgImage.width * scale,
-                    bgImage.height * scale
-                );
-
+                ctx.drawImage(bgImage, x, y, bgImage.width * scale, bgImage.height * scale);
                 ctx.restore();
 
-                // dark cinematic overlay
                 const overlay = ctx.createLinearGradient(0, 0, 0, height);
                 overlay.addColorStop(0, "rgba(10, 15, 25, 0.55)");
                 overlay.addColorStop(1, "rgba(5, 8, 15, 0.92)");
-
                 ctx.fillStyle = overlay;
                 ctx.fillRect(0, 0, width, height);
             }
 
-            // vignette
-            const vignette = ctx.createRadialGradient(
-                width / 2,
-                height / 2,
-                80,
-                width / 2,
-                height / 2,
-                Math.max(width, height)
-            );
-
-            vignette.addColorStop(0, "rgba(0,0,0,0)");
-            vignette.addColorStop(1, "rgba(0,0,0,0.65)");
-
-            ctx.fillStyle = vignette;
-            ctx.fillRect(0, 0, width, height);
-
-            // =====================================================
-            // 2. GLASS MIRROR CARD (DARK CINEMATIC)
-            // =====================================================
             const cardSize = Math.min(width * 0.78, 420);
             const cardX = (width - cardSize) / 2;
             const cardY = (height - cardSize) / 2;
 
             ctx.save();
-
             ctx.shadowColor = "rgba(0,0,0,0.6)";
             ctx.shadowBlur = 60;
             ctx.shadowOffsetY = 30;
 
-            const glass = ctx.createLinearGradient(
-                cardX,
-                cardY,
-                cardX,
-                cardY + cardSize
-            );
-
+            const glass = ctx.createLinearGradient(cardX, cardY, cardX, cardY + cardSize);
             glass.addColorStop(0, "rgba(15, 23, 42, 0.55)");
             glass.addColorStop(0.5, "rgba(30, 41, 59, 0.25)");
             glass.addColorStop(1, "rgba(15, 23, 42, 0.6)");
 
             ctx.fillStyle = glass;
-
             ctx.beginPath();
             ctx.roundRect(cardX, cardY, cardSize, cardSize, 36);
             ctx.fill();
-
-            ctx.strokeStyle = "rgba(255,255,255,0.08)";
-            ctx.stroke();
-
-            // reflection sweep
-            ctx.save();
-            ctx.beginPath();
-            ctx.roundRect(cardX, cardY, cardSize, cardSize, 36);
-            ctx.clip();
-
-            const shinePos = (progress * cardSize * 1.4) % (cardSize * 2);
-
-            const shine = ctx.createLinearGradient(
-                cardX + shinePos - cardSize,
-                0,
-                cardX + shinePos,
-                0
-            );
-
-            shine.addColorStop(0, "rgba(255,255,255,0)");
-            shine.addColorStop(0.5, "rgba(255,255,255,0.07)");
-            shine.addColorStop(1, "rgba(255,255,255,0)");
-
-            ctx.fillStyle = shine;
-            ctx.fillRect(cardX, cardY, cardSize, cardSize);
-
-            ctx.restore();
             ctx.restore();
 
-            // =====================================================
-            // 3. LOGO (FLOAT + GLOW PULSE)
-            // =====================================================
             const logoAlpha = Math.min(1, progress * 1.6);
             const float = Math.sin(progress * Math.PI * 2) * 6;
 
@@ -1325,11 +1011,8 @@ async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
             ctx.translate(width / 2, height / 2 - 60 + float);
             ctx.scale(0.85 + logoAlpha * 0.15, 0.85 + logoAlpha * 0.15);
             ctx.globalAlpha = logoAlpha;
-
-            // glow
             ctx.shadowColor = "rgba(255, 0, 80, 0.35)";
             ctx.shadowBlur = 30;
-
             ctx.fillStyle = "rgba(255,255,255,0.9)";
             ctx.beginPath();
             ctx.arc(0, 0, 62, 0, Math.PI * 2);
@@ -1343,59 +1026,39 @@ async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
                 ctx.drawImage(appIcon, -54, -54, 108, 108);
                 ctx.restore();
             }
-
             ctx.restore();
 
-            // =====================================================
-            // 4. TEXT (CLEAN CINEMATIC FADE)
-            // =====================================================
             const textAlpha = Math.min(1, Math.max(0, (progress - 0.25) * 2));
-
             ctx.save();
             ctx.globalAlpha = textAlpha;
             ctx.textAlign = "center";
 
+            // "Thank You!" - moved up slightly
             ctx.fillStyle = "#ffffff";
             ctx.font = `800 ${width * 0.07}px Outfit`;
-            ctx.fillText("Thank You!", width / 2, height / 2 + 80);
+            ctx.fillText("Thank You!", width / 2, height / 2 + 60);
 
+            // "Made with love" - moved much closer to "Thank You!" (reduced gap)
             ctx.fillStyle = "rgba(255,255,255,0.7)";
-            ctx.font = `400 ${width * 0.04}px Outfit`;
-            ctx.fillText(
-                "Made with love for your special day",
-                width / 2,
-                height / 2 + 120
-            );
+            ctx.font = `400 ${width * 0.035}px Outfit`;
+            ctx.fillText("Made with love for your special day", width / 2, height / 2 + 110);
 
             ctx.restore();
 
-            // =====================================================
-            // 5. CREDIT
-            // =====================================================
+            // Designer credit at bottom
             ctx.save();
-            ctx.globalAlpha = progress;
-            ctx.fillStyle = "rgba(255,255,255,0.35)";
-            ctx.font = `300 14px Playfair Display`;
+            ctx.globalAlpha = progress * 0.7;
+            ctx.font = `${isMobile ? 10 : 12}px "Poppins", sans-serif`;
+            ctx.fillStyle = "rgba(255,255,255,0.4)";
             ctx.textAlign = "center";
             ctx.fillText("Designed by KofiLartey", width / 2, height - 30);
             ctx.restore();
-
-            // =====================================================
-            // 6. WATERMARK
-            // =====================================================
-            await drawTikTokWatermark(
-                ctx,
-                appIcon,
-                width,
-                height,
-                startFrame + i
-            );
 
             await new Promise((r) => setTimeout(r, 1000 / 30));
         }
     }
 
-    // ========== IMPROVED VIDEO EXPORT FUNCTION ==========
+    // ========== VIDEO EXPORT FUNCTION ==========
 
     async function exportVideo() {
         // Disable video download on mobile
@@ -1470,12 +1133,12 @@ async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
                 stream = canvasStream;
             }
 
-            // Find best MIME type - prioritize WebM for stability
+            // Find best MIME type
             const mimeTypes = [
+                'video/mp4;codecs=h264,aac',
+                'video/mp4',
                 'video/webm;codecs=vp8,opus',
-                'video/webm;codecs=vp9,opus',
-                'video/webm',
-                'video/mp4'
+                'video/webm'
             ];
 
             let mimeType = '';
@@ -1492,8 +1155,8 @@ async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
 
             const recorderOptions = {
                 mimeType: mimeType,
-                videoBitsPerSecond: 3000000, // Slightly reduced for stability
-                audioBitsPerSecond: 128000
+                videoBitsPerSecond: 4000000,
+                audioBitsPerSecond: 192000
             };
 
             recorder = new MediaRecorder(stream, recorderOptions);
@@ -1509,27 +1172,22 @@ async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
                 throw new Error('Recording error occurred');
             };
 
-            // Start recording with timeslice
-            recorder.start(1000);
+            recorder.start(250);
             await new Promise(resolve => setTimeout(resolve, 200));
 
-            // Start audio
             await audioContext.resume();
             try {
                 await audioElement.play();
             } catch (err) {
                 console.log('Audio playback warning:', err);
-                // Continue without audio if needed
             }
 
-            // Reduced frame counts for better performance
             const introFrames = 90;
             const slideFrames = 150;
-            const outroFrames = 150; // Slightly longer to show logo
+            const outroFrames = 90;
 
             let globalFrame = 0;
 
-            // Helper for frame rendering with timeout
             const renderWithTimeout = async (renderFunc, ...args) => {
                 if (!isRecordingActive) throw new Error('Recording stopped');
                 return Promise.race([
@@ -1550,7 +1208,7 @@ async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
                     const img = new Image();
                     img.crossOrigin = "anonymous";
                     img.onload = resolve;
-                    img.onerror = resolve; // Continue even if image fails
+                    img.onerror = resolve;
                     img.src = slide.photo;
                     setTimeout(resolve, 5000);
                 });
@@ -1560,30 +1218,25 @@ async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
             // Render slides
             for (let i = 0; i < slides.length; i++) {
                 if (!isRecordingActive) break;
-                await renderWithTimeout(renderSlide, ctx, width, height, slides[i], i + 1, slides.length, globalFrame, slideFrames);
+                await renderWithTimeout(renderSlide, ctx, width, height, slides[i], i + 1, slides.length, globalFrame, slideFrames, isMobile);
                 globalFrame += slideFrames;
-                const progress = 15 + Math.round(((i + 1) / slides.length) * 75);
-                setRecordingProgress(progress);
-
-                // Small pause between slides to prevent memory buildup
+                const progVal = 15 + Math.round(((i + 1) / slides.length) * 75);
+                setRecordingProgress(progVal);
                 await new Promise(resolve => setTimeout(resolve, 50));
             }
 
-            // Render outro with logo
+            // Render outro
             if (isRecordingActive) {
                 await renderWithTimeout(renderOutro, ctx, width, height, outroFrames, globalFrame);
                 setRecordingProgress(95);
             }
 
-            // Give extra time for the last frames to render
             await new Promise(resolve => setTimeout(resolve, 500));
 
-            // Stop recording
             if (recorder && recorder.state === 'recording') {
                 recorder.stop();
             }
 
-            // Stop audio
             if (audioElement) {
                 audioElement.pause();
                 audioElement.src = '';
@@ -1593,21 +1246,18 @@ async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
                 await audioContext.close();
             }
 
-            // Wait for final data
             await new Promise(resolve => setTimeout(resolve, 1000));
 
             if (recordingChunks.length === 0) {
                 throw new Error('No video data was recorded');
             }
 
-            // Create and download video
             const blob = new Blob(recordingChunks, { type: mimeType });
             const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
             const filename = code
                 ? `${eventText.action.toLowerCase()}-slideshow-${code}-${Date.now()}.${extension}`
                 : `${eventText.action.toLowerCase()}-slideshow-${Date.now()}.${extension}`;
 
-            // For large files, use download attribute
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -1627,7 +1277,6 @@ async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
         } finally {
             isRecordingActive = false;
 
-            // Clean up resources
             if (stream) {
                 stream.getTracks().forEach(track => track.stop());
             }
@@ -1647,187 +1296,6 @@ async function renderIntro(ctx, width, height, totalFrames, startFrame = 0) {
                 } catch (e) { }
             }
 
-            setIsRecording(false);
-        }
-    }
-
-    // ========== VIDEO EXPORT FUNCTION ==========
-
-    async function exportVideo() {
-        // Disable video download on mobile
-        if (isMobile) {
-            alert('Video download is only available on desktop for better quality. Please use a desktop computer to download videos.');
-            return;
-        }
-
-        if (!slides.length) {
-            alert('No slides to export');
-            return;
-        }
-
-        const audioUrl = orderConfig?.audio_url;
-        if (!audioUrl) {
-            alert('No background music configured for this page.');
-            return;
-        }
-
-        setIsRecording(true);
-        setRecordingProgress(0);
-
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d', { alpha: false });
-
-        // High quality resolution for desktop
-        const width = 720;
-        const height = 1280;
-        canvas.width = width;
-        canvas.height = height;
-
-        let recorder = null;
-        let audioElement = null;
-        let audioContext = null;
-        let audioDestination = null;
-        let stream = null;
-        let recordingChunks = [];
-
-        try {
-            // Setup audio
-            audioContext = await ensureAudioContext();
-            audioElement = new Audio(audioUrl);
-            audioElement.loop = true;
-            audioElement.volume = 0.3;
-            audioElement.crossOrigin = 'anonymous';
-
-            const source = audioContext.createMediaElementSource(audioElement);
-            audioDestination = audioContext.createMediaStreamDestination();
-            source.connect(audioDestination);
-            source.connect(audioContext.destination);
-
-            const canvasStream = canvas.captureStream(30);
-
-            if (audioDestination.stream.getAudioTracks().length > 0) {
-                stream = new MediaStream([
-                    ...canvasStream.getVideoTracks(),
-                    ...audioDestination.stream.getAudioTracks()
-                ]);
-            } else {
-                stream = canvasStream;
-            }
-
-            // Find best MIME type
-            const mimeTypes = [
-                'video/mp4;codecs=h264,aac',
-                'video/mp4',
-                'video/webm;codecs=vp8,opus',
-                'video/webm'
-            ];
-
-            let mimeType = '';
-            for (const type of mimeTypes) {
-                if (MediaRecorder.isTypeSupported(type)) {
-                    mimeType = type;
-                    break;
-                }
-            }
-
-            const recorderOptions = {
-                mimeType: mimeType,
-                videoBitsPerSecond: 4000000,
-                audioBitsPerSecond: 192000
-            };
-
-            recorder = new MediaRecorder(stream, recorderOptions);
-
-            recorder.ondataavailable = (event) => {
-                if (event.data && event.data.size > 0) {
-                    recordingChunks.push(event.data);
-                }
-            };
-
-            recorder.start(250);
-            await new Promise(resolve => setTimeout(resolve, 100));
-
-            if (audioContext.state !== 'running') {
-                await audioContext.resume();
-            }
-            try {
-                await audioElement.play();
-            } catch (err) {
-                console.log('Audio playback failed:', err);
-            }
-
-            const introFrames = 120;
-            const slideFrames = 180;
-            const outroFrames = 120;
-
-            let globalFrame = 0;
-
-            // Render intro
-            await renderIntro(ctx, width, height, introFrames, globalFrame);
-            globalFrame += introFrames;
-            setRecordingProgress(10);
-
-            // Render slides
-            for (let i = 0; i < slides.length; i++) {
-                await renderSlide(ctx, width, height, slides[i], i + 1, slides.length, globalFrame, slideFrames);
-                globalFrame += slideFrames;
-                setRecordingProgress(10 + Math.round(((i + 1) / slides.length) * 80));
-            }
-
-            // Render outro
-            await renderOutro(ctx, width, height, outroFrames, globalFrame);
-            setRecordingProgress(95);
-
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            if (recorder && recorder.state === 'recording') {
-                recorder.stop();
-            }
-
-            if (audioElement) {
-                audioElement.pause();
-            }
-
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            if (recordingChunks.length === 0) {
-                throw new Error('No video data was recorded');
-            }
-
-            // Create video blob
-            const blob = new Blob(recordingChunks, { type: mimeType || 'video/mp4' });
-            const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
-            const filename = code
-                ? `${eventText.action.toLowerCase()}-slideshow-${code}-${Date.now()}.${extension}`
-                : `${eventText.action.toLowerCase()}-slideshow-${Date.now()}.${extension}`;
-
-            // Save to device
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-
-            setRecordingProgress(100);
-            alert('Video saved to your device!');
-
-        } catch (err) {
-            console.error('Video export error:', err);
-            alert('An error occurred: ' + err.message);
-        } finally {
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
-            if (audioElement) {
-                audioElement.pause();
-                audioElement.src = '';
-            }
-            if (audioContext) {
-                audioContext.close();
-            }
             setIsRecording(false);
         }
     }
