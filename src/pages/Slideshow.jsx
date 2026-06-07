@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, useRef } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase, STORAGE_KEYS } from '../supabase'
+import { Conversion, Input, Output, BlobSource, BufferTarget, Mp4OutputFormat, WEBM } from 'mediabunny'
 
 // App icon URL for watermark
 const APP_ICON_URL = 'https://res.cloudinary.com/djjgkezui/image/upload/v1778959179/IMG-20260516-WA0050_zegaok.jpg'
@@ -1058,7 +1059,41 @@ function Slideshow() {
         }
     }
 
-    // ========== VIDEO EXPORT FUNCTION ==========
+    // ========== VIDEO EXPORT FUNCTION WITH MEDIABUNNY CONVERSION ==========
+
+    // FIXED: MediaBunny 1.46.0 conversion using Conversion pipeline API
+    async function convertToMP4WithMediabunny(webmBlob) {
+        try {
+            console.log('Starting MediaBunny conversion...');
+
+            const source = new BlobSource(webmBlob);
+            const input = new Input({ source, formats: [WEBM] });
+
+            const format = new Mp4OutputFormat();
+            const target = new BufferTarget();
+            const output = new Output({ format, target });
+
+            const conversion = await Conversion.init({ input, output });
+            if (!conversion.isValid) {
+                throw new Error('Conversion configuration is invalid: ' + JSON.stringify(conversion.discardedTracks));
+            }
+
+            await conversion.execute();
+
+            const buffer = target.buffer;
+            if (!buffer || buffer.byteLength === 0) {
+                throw new Error('Conversion produced empty buffer');
+            }
+
+            console.log('Conversion successful, size:', buffer.byteLength);
+
+            return new Blob([buffer], { type: 'video/mp4' });
+
+        } catch (err) {
+            console.error('MediaBunny conversion error:', err);
+            throw err;
+        }
+    }
 
     async function exportVideo() {
         // Disable video download on mobile
@@ -1133,29 +1168,16 @@ function Slideshow() {
                 stream = canvasStream;
             }
 
-            // Find best MIME type
-            const mimeTypes = [
-                'video/mp4;codecs=h264,aac',
-                'video/mp4',
-                'video/webm;codecs=vp8,opus',
-                'video/webm'
-            ];
+            // Use WebM for recording (best compatibility with Mediabunny)
+            const mimeType = 'video/webm';
 
-            let mimeType = '';
-            for (const type of mimeTypes) {
-                if (MediaRecorder.isTypeSupported(type)) {
-                    mimeType = type;
-                    break;
-                }
-            }
-
-            if (!mimeType) {
-                throw new Error('No supported MIME type found');
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                throw new Error('WebM format not supported');
             }
 
             const recorderOptions = {
                 mimeType: mimeType,
-                videoBitsPerSecond: 4000000,
+                videoBitsPerSecond: 3000000,
                 audioBitsPerSecond: 192000
             };
 
@@ -1252,13 +1274,34 @@ function Slideshow() {
                 throw new Error('No video data was recorded');
             }
 
-            const blob = new Blob(recordingChunks, { type: mimeType });
-            const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
-            const filename = code
-                ? `${eventText.action.toLowerCase()}-slideshow-${code}-${Date.now()}.${extension}`
-                : `${eventText.action.toLowerCase()}-slideshow-${Date.now()}.${extension}`;
+            const webmBlob = new Blob(recordingChunks, { type: 'video/webm' });
 
-            const url = URL.createObjectURL(blob);
+            // Try to convert to MP4 using MediaBunny
+            let finalBlob = webmBlob;
+            let finalExtension = 'webm';
+
+            try {
+                setRecordingProgress(95);
+                console.log('Attempting MediaBunny MP4 conversion...');
+                const mp4Blob = await convertToMP4WithMediabunny(webmBlob);
+                if (mp4Blob && mp4Blob.size > 0) {
+                    finalBlob = mp4Blob;
+                    finalExtension = 'mp4';
+                    console.log('Successfully converted to MP4!');
+                } else {
+                    throw new Error('MP4 conversion produced empty blob');
+                }
+            } catch (conversionError) {
+                console.error('Mediabunny conversion failed:', conversionError);
+                console.log('Falling back to WebM format');
+                // Keep WebM as fallback
+            }
+
+            const filename = code
+                ? `${eventText.action.toLowerCase()}-slideshow-${code}-${Date.now()}.${finalExtension}`
+                : `${eventText.action.toLowerCase()}-slideshow-${Date.now()}.${finalExtension}`;
+
+            const url = URL.createObjectURL(finalBlob);
             const a = document.createElement('a');
             a.href = url;
             a.download = filename;
@@ -1269,7 +1312,12 @@ function Slideshow() {
             setTimeout(() => URL.revokeObjectURL(url), 5000);
 
             setRecordingProgress(100);
-            alert('Video saved successfully!');
+
+            if (finalExtension === 'mp4') {
+                alert(`✅ Video saved as MP4!\n\nFile: ${filename}\nSize: ${(finalBlob.size / 1024 / 1024).toFixed(2)} MB\n\nThis MP4 will work on all players and WhatsApp!`);
+            } else {
+                alert(`⚠️ Video saved as ${filename}\n\nNote: For best compatibility, use VLC Player or send as "Document" on WhatsApp.\n\nTo get MP4 format, try Google Chrome browser.`);
+            }
 
         } catch (err) {
             console.error('Video export error:', err);
